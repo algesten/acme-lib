@@ -32,7 +32,7 @@ use crate::Result;
 
 mod auth;
 
-pub use auth::{Auth, Challenge};
+pub use self::auth::{Auth, Challenge};
 
 /// The order wrapped with an outer façade.
 pub(crate) struct Order<P: Persist> {
