@@ -4,6 +4,8 @@
 //!
 //! Uses ACME v2 to issue/renew certificates.
 //!
+//! # Install
+//!
 //! Install it like so:
 //!
 //! ```toml
@@ -11,7 +13,7 @@
 //! acme-lib = "0.1"
 //! ```
 //!
-//! # Quick start
+//! # Example
 //!
 //! ```no_run
 //! use acme_lib::{Error, Directory, DirectoryUrl};
