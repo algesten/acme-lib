@@ -36,6 +36,12 @@ fn safe_read_string(res: ureq::Response) -> Result<String> {
     Ok(res_body)
 }
 
+pub(crate) fn configure_req(req: &mut ureq::Request) {
+    req.timeout_connect(30_000);
+    req.timeout_read(30_000);
+    req.timeout_write(30_000);
+}
+
 pub(crate) fn retry_call<F: Fn() -> Result<(ureq::Request, Option<String>)>>(
     f: F,
 ) -> Result<ureq::Response> {
@@ -43,9 +49,7 @@ pub(crate) fn retry_call<F: Fn() -> Result<(ureq::Request, Option<String>)>>(
     loop {
         let (mut req, body) = f()?;
         i += 1;
-        req.timeout_connect(5_000);
-        req.timeout_read(5_000);
-        req.timeout_write(5_000);
+        configure_req(&mut req);
         let res = if let Some(body) = body {
             trace!("{:?}: {}", req, body);
             req.send_string(&body)
