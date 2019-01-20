@@ -1,4 +1,4 @@
-//! Order life cycle module operations.
+//! Order life cycle.
 //!
 //! An order goes through a life cycle of different states that require various actions by
 //! the user. To ensure the user only use appropriate actions, this library have simple façade
