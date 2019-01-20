@@ -2,12 +2,13 @@ use openssl::ecdsa::EcdsaSig;
 use openssl::sha::sha256;
 use serde::{Deserialize, Serialize};
 
+use crate::acc::AcmeKey;
 use crate::cert::EC_GROUP_P256;
-use crate::util::{base64url, AcmeKey};
+use crate::util::base64url;
 use crate::Result;
 
 #[derive(Debug, Serialize, Deserialize, Default)]
-struct JwsProtected {
+pub(crate) struct JwsProtected {
     alg: String,
     url: String,
     nonce: String,
@@ -18,7 +19,7 @@ struct JwsProtected {
 }
 
 impl JwsProtected {
-    fn new_jwk(jwk: Jwk, url: &str, nonce: String) -> Self {
+    pub(crate) fn new_jwk(jwk: Jwk, url: &str, nonce: String) -> Self {
         JwsProtected {
             alg: "ES256".into(),
             url: url.into(),
@@ -27,7 +28,7 @@ impl JwsProtected {
             ..Default::default()
         }
     }
-    fn new_kid(kid: &str, url: &str, nonce: String) -> Self {
+    pub(crate) fn new_kid(kid: &str, url: &str, nonce: String) -> Self {
         JwsProtected {
             alg: "ES256".into(),
             url: url.into(),
@@ -39,7 +40,7 @@ impl JwsProtected {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-struct Jwk {
+pub(crate) struct Jwk {
     alg: String,
     crv: String,
     kty: String,
@@ -51,7 +52,7 @@ struct Jwk {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 // LEXICAL ORDER OF FIELDS MATTER!
-struct JwkThumb {
+pub(crate) struct JwkThumb {
     crv: String,
     kty: String,
     x: String,
@@ -90,10 +91,20 @@ impl From<&Jwk> for JwkThumb {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Jws {
+pub(crate) struct Jws {
     protected: String,
     payload: String,
     signature: String,
+}
+
+impl Jws {
+    pub(crate) fn new(protected: String, payload: String, signature: String) -> Self {
+        Jws {
+            protected,
+            payload,
+            signature,
+        }
+    }
 }
 
 pub(crate) fn make_jws_kid<T: Serialize + ?Sized>(
@@ -110,11 +121,11 @@ pub(crate) fn make_jws_jwk<T: Serialize + ?Sized>(
     url: &str,
     nonce: String,
     key: &AcmeKey,
-    payload: Option<&T>,
+    payload: &T,
 ) -> Result<String> {
     let jwk: Jwk = key.into();
     let protected = JwsProtected::new_jwk(jwk, url, nonce);
-    do_make(protected, key, payload)
+    do_make(protected, key, Some(payload))
 }
 
 pub(crate) fn make_jws_kid_empty(url: &str, nonce: String, key: &AcmeKey) -> Result<String> {

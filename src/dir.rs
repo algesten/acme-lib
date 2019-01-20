@@ -1,8 +1,9 @@
 //
+use crate::acc::AcmeKey;
 use crate::api::{ApiAccount, ApiDirectory};
 use crate::jwt::make_jws_jwk;
 use crate::persist::{Persist, PersistKey, PersistKind};
-use crate::util::{expect_header, read_json, retry_call, AcmeKey};
+use crate::util::{expect_header, read_json, retry_call};
 use crate::{Account, Result};
 
 const LETSENCRYPT: &str = "https://acme-v02.api.letsencrypt.org/directory";
@@ -83,7 +84,7 @@ impl<P: Persist> Directory<P> {
         let res = retry_call(|| {
             let nonce = self.new_nonce()?;
             let url = &self.1.newAccount;
-            let body = make_jws_jwk(url, nonce, &acme_key, Some(&acc))?;
+            let body = make_jws_jwk(url, nonce, &acme_key, &acc)?;
             debug!("Call new account endpoint: {}", url);
             let mut req = ureq::post(url);
             req.set("content-type", "application/jose+json");

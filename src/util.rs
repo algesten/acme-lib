@@ -1,7 +1,4 @@
-use crate::cert::EC_GROUP_P256;
 use lazy_static::lazy_static;
-use openssl::ec::EcKey;
-use openssl::pkey;
 use serde::de::DeserializeOwned;
 use std::io::Read;
 
@@ -79,40 +76,4 @@ pub(crate) fn expect_header(res: &ureq::Response, name: &str) -> Result<String> 
     res.header(name)
         .map(|v| v.to_string())
         .ok_or_else(|| format!("Missing header: {}", name).into())
-}
-
-#[derive(Clone)]
-pub(crate) struct AcmeKey(EcKey<pkey::Private>, Option<String>);
-
-impl AcmeKey {
-    pub(crate) fn new() -> AcmeKey {
-        let pri_key = EcKey::generate(&*EC_GROUP_P256).expect("EcKey");
-        Self::from_key(pri_key)
-    }
-
-    pub(crate) fn from_pem(pem: &[u8]) -> Result<AcmeKey> {
-        let pri_key =
-            EcKey::private_key_from_pem(pem).map_err(|e| format!("Failed to read PEM: {}", e))?;
-        Ok(Self::from_key(pri_key))
-    }
-
-    fn from_key(pri_key: EcKey<pkey::Private>) -> AcmeKey {
-        AcmeKey(pri_key, None)
-    }
-
-    pub(crate) fn to_pem(&self) -> Vec<u8> {
-        self.0.private_key_to_pem().expect("private_key_to_pem")
-    }
-
-    pub(crate) fn private_key(&self) -> &EcKey<pkey::Private> {
-        &self.0
-    }
-
-    pub(crate) fn key_id(&self) -> &str {
-        self.1.as_ref().unwrap()
-    }
-
-    pub(crate) fn set_key_id(&mut self, kid: String) {
-        self.1 = Some(kid)
-    }
 }

@@ -6,8 +6,12 @@ use crate::cert::Certificate;
 use crate::jwt::make_jws_kid;
 use crate::order::{NewOrder, Order};
 use crate::persist::{Persist, PersistKey, PersistKind};
-use crate::util::{expect_header, read_json, retry_call, AcmeKey};
+use crate::util::{expect_header, read_json, retry_call};
 use crate::{Directory, Result};
+
+mod akey;
+
+pub(crate) use self::akey::AcmeKey;
 
 #[derive(Clone)]
 pub(crate) struct AccountInner<P: Persist> {

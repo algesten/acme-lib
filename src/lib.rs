@@ -165,6 +165,7 @@ mod cert;
 mod dir;
 mod error;
 mod jwt;
+mod req;
 mod util;
 
 pub mod api;
