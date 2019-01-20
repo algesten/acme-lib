@@ -3,6 +3,7 @@ use openssl::ec::{EcGroup, EcKey};
 use openssl::hash::MessageDigest;
 use openssl::nid::Nid;
 use openssl::pkey::{self, PKey};
+use openssl::rsa::Rsa;
 use openssl::stack::Stack;
 use openssl::x509::extension::SubjectAlternativeName;
 use openssl::x509::{X509NameBuilder, X509Req, X509ReqBuilder, X509};
@@ -14,6 +15,21 @@ lazy_static! {
         { EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).expect("EcGroup") };
     pub(crate) static ref EC_GROUP_P384: EcGroup =
         { EcGroup::from_curve_name(Nid::SECP384R1).expect("EcGroup") };
+}
+
+/// Make an RSA private/public key pair.
+///
+/// This library does not check the number of bits used to create the key pair.
+/// For Let's Encrypt, the bits must be between 2048 and 4096.
+pub fn create_rsa_key(bits: u32) -> (PKey<pkey::Private>, PKey<pkey::Public>) {
+    let pri_key_rsa = Rsa::generate(bits).expect("Rsa::generate");
+    let n = pri_key_rsa.n().to_owned().expect("BigNumRef::to_owned()");
+    let e = pri_key_rsa.e().to_owned().expect("BigNumRef::to_owned()");
+    let pub_key_rsa = Rsa::from_public_components(n, e).expect("Rsa::from_public_compontents");
+    (
+        PKey::from_rsa(pri_key_rsa).expect("from_rsa"),
+        PKey::from_rsa(pub_key_rsa).expect("from_rsa"),
+    )
 }
 
 /// Make a P-256 private/public key pair.
