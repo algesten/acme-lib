@@ -1,68 +1,84 @@
-#![allow(unused)]
-use openssl::ecdsa::EcdsaSig;
-use openssl::sha::sha256;
-use serde::{Deserialize, Serialize};
+use crate::api::ApiProblem;
 
-use crate::acc::AcmeKey;
-use crate::cert::EC_GROUP_P256;
-use crate::jwt::*;
-use crate::util::base64url;
-use crate::Result;
+pub(crate) type ReqResult<T> = ::std::result::Result<T, ApiProblem>;
 
-fn make_jws_kid<T: Serialize + ?Sized>(
-    url: &str,
-    nonce: String,
-    key: &AcmeKey,
-    payload: &T,
-) -> Result<String> {
-    let protected = JwsProtected::new_kid(key.key_id(), url, nonce);
-    do_make(protected, key, Some(payload))
+pub(crate) fn req_get(url: &str) -> ureq::Response {
+    let mut req = ureq::get(url);
+    req_configure(&mut req);
+    trace!("{:?}", req);
+    req.call()
 }
 
-fn make_jws_kid_empty(url: &str, nonce: String, key: &AcmeKey) -> Result<String> {
-    let protected = JwsProtected::new_kid(key.key_id(), url, nonce);
-    do_make::<String>(protected, key, None)
+pub(crate) fn req_head(url: &str) -> ureq::Response {
+    let mut req = ureq::head(url);
+    req_configure(&mut req);
+    trace!("{:?}", req);
+    req.call()
 }
 
-fn make_jws_jwk<T: Serialize + ?Sized>(
-    url: &str,
-    nonce: String,
-    key: &AcmeKey,
-    payload: &T,
-) -> Result<String> {
-    let jwk: Jwk = key.into();
-    let protected = JwsProtected::new_jwk(jwk, url, nonce);
-    do_make(protected, key, Some(payload))
+pub(crate) fn req_post(url: &str, body: &str) -> ureq::Response {
+    let mut req = ureq::post(url);
+    req.set("content-type", "application/jose+json");
+    req_configure(&mut req);
+    trace!("{:?} {}", req, body);
+    req.send_string(body)
 }
 
-fn do_make<T: Serialize + ?Sized>(
-    protected: JwsProtected,
-    key: &AcmeKey,
-    payload: Option<&T>,
-) -> Result<String> {
-    let protected = {
-        let pro_json = serde_json::to_string(&protected)?;
-        base64url(pro_json.as_bytes())
-    };
-    let payload = if let Some(payload) = payload {
-        let pay_json = serde_json::to_string(payload)?;
-        base64url(pay_json.as_bytes())
+fn req_configure(req: &mut ureq::Request) {
+    req.timeout_connect(30_000);
+    req.timeout_read(30_000);
+    req.timeout_write(30_000);
+}
+
+pub(crate) fn req_handle_error(res: ureq::Response) -> ReqResult<ureq::Response> {
+    // ok responses pass through
+    if res.ok() {
+        return Ok(res);
+    }
+
+    let problem = if res.content_type() == "application/problem+json" {
+        // if we were sent a problem+json, deserialize it
+        let body = req_safe_read_body(res);
+        serde_json::from_str(&body).unwrap_or_else(|e| ApiProblem {
+            _type: "problemJsonFail".into(),
+            detail: Some(format!(
+                "Failed to deserialize application/problem+json ({}) body: {}",
+                e.to_string(),
+                body
+            )),
+            subproblems: None,
+        })
     } else {
-        "".into()
+        // some other problem
+        let status = format!("{} {}", res.status(), res.status_text());
+        let body = req_safe_read_body(res);
+        let detail = format!("{} body: {}", status, body);
+        ApiProblem {
+            _type: "httpReqError".into(),
+            detail: Some(detail),
+            subproblems: None,
+        }
     };
 
-    let to_sign = format!("{}.{}", protected, payload);
-    let digest = sha256(to_sign.as_bytes());
-    let sig = EcdsaSig::sign(&digest, key.private_key()).expect("EcdsaSig::sign");
-    let r = sig.r().to_vec();
-    let s = sig.s().to_vec();
+    Err(problem)
+}
 
-    let mut v = Vec::with_capacity(r.len() + s.len());
-    v.extend_from_slice(&r);
-    v.extend_from_slice(&s);
-    let signature = base64url(&v);
+pub(crate) fn req_expect_header(res: &ureq::Response, name: &str) -> ReqResult<String> {
+    res.header(name)
+        .map(|v| v.to_string())
+        .ok_or_else(|| ApiProblem {
+            _type: format!("Missing header: {}", name),
+            detail: None,
+            subproblems: None,
+        })
+}
 
-    let jws = Jws::new(protected, payload, signature);
-
-    Ok(serde_json::to_string(&jws)?)
+pub(crate) fn req_safe_read_body(res: ureq::Response) -> String {
+    use std::io::Read;
+    let mut res_body = String::new();
+    let mut read = res.into_reader();
+    // letsencrypt sometimes closes the TLS abruptly causing io error
+    // even though we did capture the body.
+    read.read_to_string(&mut res_body).ok();
+    res_body
 }

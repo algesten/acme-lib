@@ -4,14 +4,58 @@
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 
-use serde::{Deserialize, Serialize};
+use serde::{
+    ser::{SerializeMap, Serializer},
+    Deserialize, Serialize,
+};
+
+/// Serializes to `""`
+pub struct ApiEmptyString;
+impl Serialize for ApiEmptyString {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str("")
+    }
+}
+
+/// Serializes to `{}`
+pub struct ApiEmptyObject;
+impl Serialize for ApiEmptyObject {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let m = serializer.serialize_map(Some(0))?;
+        m.end()
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct ApiProblem {
     #[serde(rename = "type")]
     pub _type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub subproblems: Option<Vec<ApiSubproblem>>,
+}
+
+impl ApiProblem {
+    pub fn is_bad_nonce(&self) -> bool {
+        self._type == "badNonce"
+    }
+}
+
+impl ::std::fmt::Display for ApiProblem {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        if let Some(detail) = &self.detail {
+            write!(f, "{}: {}", self._type, detail)
+        } else {
+            write!(f, "{}", self._type)
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -279,4 +323,22 @@ impl ApiChallenge {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ApiFinalize {
     pub csr: String,
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_api_empty_string() {
+        let x = serde_json::to_string(&ApiEmptyString).unwrap();
+        assert_eq!("\"\"", x);
+    }
+
+    #[test]
+    fn test_api_empty_object() {
+        let x = serde_json::to_string(&ApiEmptyObject).unwrap();
+        assert_eq!("{}", x);
+    }
+
 }

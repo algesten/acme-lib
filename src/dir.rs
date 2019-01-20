@@ -1,9 +1,12 @@
 //
+use std::sync::Arc;
+
 use crate::acc::AcmeKey;
 use crate::api::{ApiAccount, ApiDirectory};
-use crate::jwt::make_jws_jwk;
 use crate::persist::{Persist, PersistKey, PersistKind};
-use crate::util::{expect_header, read_json, retry_call};
+use crate::req::{req_expect_header, req_get, req_handle_error};
+use crate::trans::{NoncePool, Transport};
+use crate::util::read_json;
 use crate::{Account, Result};
 
 const LETSENCRYPT: &str = "https://acme-v02.api.letsencrypt.org/directory";
@@ -33,16 +36,25 @@ impl<'a> DirectoryUrl<'a> {
 }
 
 /// Entry point for accessing an ACME API.
-#[derive(Debug, Clone)]
-pub struct Directory<P: Persist>(P, ApiDirectory);
+#[derive(Clone)]
+pub struct Directory<P: Persist> {
+    persist: P,
+    nonce_pool: Arc<NoncePool>,
+    api_directory: ApiDirectory,
+}
 
 impl<P: Persist> Directory<P> {
     /// Create a directory over a persistence implementation and directory url.
     pub fn from_url(persist: P, url: DirectoryUrl) -> Result<Directory<P>> {
         let dir_url = url.to_url();
-        let res = retry_call(|| Ok((ureq::get(dir_url), None)))?;
-        let api_dir: ApiDirectory = read_json(res)?;
-        Ok(Directory(persist, api_dir))
+        let res = req_handle_error(req_get(&dir_url))?;
+        let api_directory: ApiDirectory = read_json(res)?;
+        let nonce_pool = Arc::new(NoncePool::new(&api_directory.newNonce));
+        Ok(Directory {
+            persist,
+            nonce_pool,
+            api_directory,
+        })
     }
 
     /// Access an account identified by a contact email.
@@ -62,7 +74,7 @@ impl<P: Persist> Directory<P> {
         // Get the key from a saved PEM, or from creating a new
         let mut is_new = false;
         let pem = self.persist().get(&pem_key)?;
-        let mut acme_key = if let Some(pem) = pem {
+        let acme_key = if let Some(pem) = pem {
             // we got a persisted private key. read it.
             debug!("Read persisted acme account key");
             AcmeKey::from_pem(&pem)?
@@ -81,50 +93,40 @@ impl<P: Persist> Directory<P> {
             termsOfServiceAgreed: Some(true),
             ..Default::default()
         };
-        let res = retry_call(|| {
-            let nonce = self.new_nonce()?;
-            let url = &self.1.newAccount;
-            let body = make_jws_jwk(url, nonce, &acme_key, &acc)?;
-            debug!("Call new account endpoint: {}", url);
-            let mut req = ureq::post(url);
-            req.set("content-type", "application/jose+json");
-            Ok((req, Some(body)))
-        })?;
-        let kid = expect_header(&res, "location")?;
+
+        let mut transport = Transport::new(&self.nonce_pool, acme_key);
+        let res = transport.call_jwk(&self.api_directory.newAccount, &acc)?;
+        let kid = req_expect_header(&res, "location")?;
         debug!("Key id is: {}", kid);
         let api_account: ApiAccount = read_json(res)?;
 
         // fill in the server returned key id
-        acme_key.set_key_id(kid);
+        transport.set_key_id(kid);
 
         // If we did create a new key, save it back to the persistence.
         if is_new {
             debug!("Persist acme account key");
-            let pem = acme_key.to_pem();
+            let pem = transport.acme_key().to_pem();
             self.persist().put(&pem_key, &pem)?;
         }
+
         // The finished account
         Ok(Account::new(
-            self.clone(),
+            self.persist.clone(),
+            transport,
             contact_email,
-            acme_key,
             api_account,
+            self.api_directory.clone(),
         ))
-    }
-
-    pub(crate) fn new_nonce(&self) -> Result<String> {
-        debug!("Get new nonce");
-        let res = retry_call(|| Ok((ureq::head(&self.1.newNonce), None)))?;
-        expect_header(&res, "replay-nonce")
     }
 
     /// Access the underlying JSON object for debugging.
     pub fn api_directory(&self) -> &ApiDirectory {
-        &self.1
+        &self.api_directory
     }
 
     pub(crate) fn persist(&self) -> &P {
-        &self.0
+        &self.persist
     }
 }
 

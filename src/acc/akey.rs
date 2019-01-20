@@ -1,7 +1,7 @@
-use crate::cert::EC_GROUP_P256;
 use openssl::ec::EcKey;
 use openssl::pkey;
 
+use crate::cert::EC_GROUP_P256;
 use crate::Result;
 
 #[derive(Clone)]

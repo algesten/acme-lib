@@ -1,13 +1,14 @@
 //
 use std::sync::Arc;
 
-use crate::api::{ApiAccount, ApiIdentifier, ApiOrder};
+use crate::api::{ApiAccount, ApiDirectory, ApiIdentifier, ApiOrder};
 use crate::cert::Certificate;
-use crate::jwt::make_jws_kid;
 use crate::order::{NewOrder, Order};
 use crate::persist::{Persist, PersistKey, PersistKind};
-use crate::util::{expect_header, read_json, retry_call};
-use crate::{Directory, Result};
+use crate::req::req_expect_header;
+use crate::trans::Transport;
+use crate::util::read_json;
+use crate::Result;
 
 mod akey;
 
@@ -15,10 +16,11 @@ pub(crate) use self::akey::AcmeKey;
 
 #[derive(Clone)]
 pub(crate) struct AccountInner<P: Persist> {
-    pub directory: Directory<P>,
+    pub persist: P,
+    pub transport: Transport,
     pub contact_email: String,
-    pub acme_key: AcmeKey,
     pub api_account: ApiAccount,
+    pub api_directory: ApiDirectory,
 }
 
 /// Account with an ACME provider.
@@ -42,17 +44,19 @@ pub struct Account<P: Persist> {
 
 impl<P: Persist> Account<P> {
     pub(crate) fn new(
-        directory: Directory<P>,
+        persist: P,
+        transport: Transport,
         contact_email: &str,
-        acme_key: AcmeKey,
         api_account: ApiAccount,
+        api_directory: ApiDirectory,
     ) -> Self {
         Account {
             inner: Arc::new(AccountInner {
-                directory,
-                acme_key,
+                persist,
+                transport,
                 contact_email: contact_email.into(),
                 api_account,
+                api_directory,
             }),
         }
     }
@@ -61,7 +65,7 @@ impl<P: Persist> Account<P> {
     ///
     /// The key is an elliptic curve private key.
     pub fn acme_private_key_pem(&self) -> String {
-        String::from_utf8(self.inner.acme_key.to_pem()).expect("from_utf8")
+        String::from_utf8(self.inner.transport.acme_key().to_pem()).expect("from_utf8")
     }
 
     /// Contact email for this account.
@@ -83,7 +87,7 @@ impl<P: Persist> Account<P> {
     pub fn certificate(&self, primary_name: &str) -> Result<Option<Certificate>> {
         // details needed for persistence
         let realm = &self.inner.contact_email;
-        let persist = &self.inner.directory.persist();
+        let persist = &self.inner.persist;
 
         // read primary key
         let pk_key = PersistKey::new(realm, PersistKind::PrivateKey, primary_name);
@@ -131,19 +135,13 @@ impl<P: Persist> Account<P> {
             ..Default::default()
         };
 
-        let res = retry_call(|| {
-            let nonce = self.inner.directory.new_nonce()?;
-            let url = &self.inner.directory.api_directory().newOrder;
-            let body = make_jws_kid(url, nonce, &self.inner.acme_key, &order)?;
-            debug!("Call new order endpoint: {}", url);
-            let mut req = ureq::post(url);
-            req.set("content-type", "application/jose+json");
-            Ok((req, Some(body)))
-        })?;
-        let url = expect_header(&res, "location")?;
+        let new_order_url = &self.inner.api_directory.newOrder;
+
+        let res = self.inner.transport.call(new_order_url, &order)?;
+        let order_url = req_expect_header(&res, "location")?;
         let api_order: ApiOrder = read_json(res)?;
 
-        let order = Order::new(&self.inner, api_order, url);
+        let order = Order::new(&self.inner, api_order, order_url);
         Ok(NewOrder { order })
     }
 

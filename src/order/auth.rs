@@ -1,13 +1,15 @@
 //
+use openssl::sha::sha256;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
 use crate::acc::AccountInner;
-use crate::api::{ApiAuth, ApiChallenge};
-use crate::jwt::{key_authorization, make_jws_kid, make_jws_kid_empty};
+use crate::acc::AcmeKey;
+use crate::api::{ApiAuth, ApiChallenge, ApiEmptyObject, ApiEmptyString};
+use crate::jwt::*;
 use crate::persist::Persist;
-use crate::util::{read_json, retry_call};
+use crate::util::{base64url, read_json};
 use crate::Result;
 
 /// An authorization ([ownership proof]) for a domain name.
@@ -160,7 +162,8 @@ impl<P: Persist> Challenge<P, Http> {
 
     /// The `proof` is some text content that is placed in the file named by `token`.
     pub fn http_proof(&self) -> String {
-        key_authorization(&self.api_challenge.token, &self.inner.acme_key, false)
+        let acme_key = self.inner.transport.acme_key();
+        key_authorization(&self.api_challenge.token, acme_key, false)
     }
 }
 
@@ -171,7 +174,8 @@ impl<P: Persist> Challenge<P, Dns> {
     /// _acme-challenge.<domain-to-be-proven>.  TXT  <proof>
     /// ```
     pub fn dns_proof(&self) -> String {
-        key_authorization(&self.api_challenge.token, &self.inner.acme_key, true)
+        let acme_key = self.inner.transport.acme_key();
+        key_authorization(&self.api_challenge.token, acme_key, true)
     }
 }
 
@@ -196,16 +200,8 @@ impl<P: Persist, A> Challenge<P, A> {
     /// The user must first update the DNS record or HTTP web server depending
     /// on the type challenge being validated.
     pub fn validate(self, delay_millis: u64) -> Result<()> {
-        let res = retry_call(|| {
-            let nonce = self.inner.directory.new_nonce()?;
-            let url = &self.api_challenge.url;
-            let empty = serde_json::Value::Object(serde_json::Map::new());
-            let body = make_jws_kid(url, nonce, &self.inner.acme_key, &empty)?;
-            debug!("Notify challenge endpoint: {}", url);
-            let mut req = ureq::post(url);
-            req.set("content-type", "application/jose+json");
-            Ok((req, Some(body)))
-        })?;
+        let url_chall = &self.api_challenge.url;
+        let res = self.inner.transport.call(url_chall, &ApiEmptyObject)?;
         let _: ApiChallenge = read_json(res)?;
 
         let auth = wait_for_auth_status(&self.inner, &self.auth_url, delay_millis)?;
@@ -236,20 +232,26 @@ impl<P: Persist, A> Challenge<P, A> {
     }
 }
 
+fn key_authorization(token: &str, key: &AcmeKey, extra_sha256: bool) -> String {
+    let jwk: Jwk = key.into();
+    let jwk_thumb: JwkThumb = (&jwk).into();
+    let jwk_json = serde_json::to_string(&jwk_thumb).expect("jwk_thumb");
+    let digest = base64url(&sha256(jwk_json.as_bytes()));
+    let key_auth = format!("{}.{}", token, digest);
+    if extra_sha256 {
+        base64url(&sha256(key_auth.as_bytes()))
+    } else {
+        key_auth
+    }
+}
+
 fn wait_for_auth_status<P: Persist>(
     inner: &Arc<AccountInner<P>>,
     auth_url: &str,
     delay_millis: u64,
 ) -> Result<ApiAuth> {
     let auth = loop {
-        let res = retry_call(|| {
-            let nonce = inner.directory.new_nonce()?;
-            let body = make_jws_kid_empty(auth_url, nonce, &inner.acme_key)?;
-            debug!("Call auth endpoint: {}", auth_url);
-            let mut req = ureq::post(auth_url);
-            req.set("content-type", "application/jose+json");
-            Ok((req, Some(body)))
-        })?;
+        let res = inner.transport.call(auth_url, &ApiEmptyString)?;
         let auth: ApiAuth = read_json(res)?;
         if !auth.is_status_pending() {
             break auth;

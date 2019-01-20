@@ -23,11 +23,10 @@ use std::thread;
 use std::time::Duration;
 
 use crate::acc::AccountInner;
-use crate::api::{ApiAuth, ApiFinalize, ApiOrder};
+use crate::api::{ApiAuth, ApiEmptyString, ApiFinalize, ApiOrder};
 use crate::cert::{create_csr, Certificate};
-use crate::jwt::{make_jws_kid, make_jws_kid_empty};
 use crate::persist::{Persist, PersistKey, PersistKind};
-use crate::util::{base64url, read_json, retry_call};
+use crate::util::{base64url, read_json};
 use crate::Result;
 
 mod auth;
@@ -57,27 +56,33 @@ pub(crate) fn refresh_order<P: Persist>(
     url: String,
     want_status: &'static str,
 ) -> Result<Order<P>> {
-    let res = retry_call(|| {
-        let nonce = inner.directory.new_nonce()?;
-        let body = make_jws_kid_empty(&url, nonce, &inner.acme_key)?;
-        debug!("Call order endpoint: {}", &url);
-        let mut req = ureq::post(&url);
-        req.set("content-type", "application/jose+json");
+    let res = inner.transport.call(&url, &ApiEmptyString)?;
 
-        // our test rig uses this
-        if cfg!(test) {
-            req.set("x-want-status", want_status);
-        }
-
-        Ok((req, Some(body)))
-    })?;
-    let api_order: ApiOrder = read_json(res)?;
+    // our test rig requires the order to be in `want_status`.
+    // api_order_of is different for test compilation
+    let api_order = api_order_of(res, want_status)?;
 
     Ok(Order {
         inner: inner.clone(),
         api_order,
         url,
     })
+}
+
+#[cfg(not(test))]
+fn api_order_of(res: ureq::Response, _want_status: &str) -> Result<ApiOrder> {
+    read_json(res)
+}
+
+#[cfg(test)]
+// our test rig requires the order to be in `want_status`
+fn api_order_of(res: ureq::Response, want_status: &str) -> Result<ApiOrder> {
+    let s = res.into_string()?;
+    #[allow(clippy::trivial_regex)]
+    let re = regex::Regex::new("<STATUS>").unwrap();
+    let b = re.replace_all(&s, want_status).to_string();
+    let api_order: ApiOrder = serde_json::from_str(&b)?;
+    Ok(api_order)
 }
 
 /// A new order created by [`Account::new_order`].
@@ -152,14 +157,7 @@ impl<P: Persist> NewOrder<P> {
         let mut result = vec![];
         if let Some(authorizations) = &self.order.api_order.authorizations {
             for auth_url in authorizations {
-                let res = retry_call(|| {
-                    let nonce = self.order.inner.directory.new_nonce()?;
-                    let body = make_jws_kid_empty(auth_url, nonce, &self.order.inner.acme_key)?;
-                    debug!("Call auth endpoint: {}", auth_url);
-                    let mut req = ureq::post(auth_url);
-                    req.set("content-type", "application/jose+json");
-                    Ok((req, Some(body)))
-                })?;
+                let res = self.order.inner.transport.call(auth_url, &ApiEmptyString)?;
                 let api_auth: ApiAuth = read_json(res)?;
                 result.push(Auth::new(&self.order.inner, api_auth, auth_url));
             }
@@ -246,18 +244,11 @@ impl<P: Persist> CsrOrder<P> {
 
         let inner = self.order.inner;
         let order_url = self.order.url;
-        let finalize_url = self.order.api_order.finalize;
+        let finalize_url = &self.order.api_order.finalize;
 
         // if the CSR is invalid, we will get a 4xx code back that
         // bombs out from this retry_call.
-        retry_call(|| {
-            let nonce = inner.directory.new_nonce()?;
-            let body = make_jws_kid(&finalize_url, nonce, &inner.acme_key, &finalize)?;
-            debug!("Call finalize endpoint: {}", &finalize_url);
-            let mut req = ureq::post(&finalize_url);
-            req.set("content-type", "application/jose+json");
-            Ok((req, Some(body)))
-        })?;
+        inner.transport.call(finalize_url, &finalize)?;
 
         // wait for the status to not be processing.
         // valid -> cert is issued
@@ -311,17 +302,10 @@ impl<P: Persist> CertOrder<P> {
         let inner = self.order.inner;
         let realm = inner.contact_email.clone();
 
-        let res = retry_call(|| {
-            let nonce = inner.directory.new_nonce()?;
-            let body = make_jws_kid_empty(&url, nonce, &inner.acme_key)?;
-            debug!("Call certificate endpoint: {}", &url);
-            let mut req = ureq::post(&url);
-            req.set("content-type", "application/jose+json");
-            Ok((req, Some(body)))
-        })?;
+        let res = inner.transport.call(&url, &ApiEmptyString)?;
 
         // save key and cert into persistence
-        let persist = &inner.directory.persist();
+        let persist = &inner.persist;
         let pk_key = PersistKey::new(&realm, PersistKind::PrivateKey, &primary_name);
         let pkey_pem_bytes = self.private_key.private_key_to_pem_pkcs8().expect("to_pem");
         let pkey_pem = String::from_utf8_lossy(&pkey_pem_bytes);

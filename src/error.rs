@@ -2,12 +2,16 @@
 use std::fmt;
 use std::io;
 
+use crate::api::ApiProblem;
+
 /// acme-lib result.
 pub type Result<T> = ::std::result::Result<T, Error>;
 
 /// acme-lib errors.
 #[derive(Debug)]
 pub enum Error {
+    /// An API call failed.
+    ApiProblem(ApiProblem),
     /// An API call failed.
     Call(String),
     /// Base64 decoding failed.
@@ -25,12 +29,19 @@ impl std::error::Error for Error {}
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Error::ApiProblem(a) => write!(f, "{}", a),
             Error::Call(s) => write!(f, "{}", s),
             Error::Base64Decode(e) => write!(f, "{}", e),
             Error::Json(e) => write!(f, "{}", e),
             Error::Io(e) => write!(f, "{}", e),
             Error::Other(s) => write!(f, "{}", s),
         }
+    }
+}
+
+impl From<ApiProblem> for Error {
+    fn from(e: ApiProblem) -> Self {
+        Error::ApiProblem(e)
     }
 }
 
