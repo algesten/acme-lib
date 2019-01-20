@@ -11,20 +11,15 @@ use openssl::x509::{X509NameBuilder, X509Req, X509ReqBuilder, X509};
 use crate::Result;
 
 lazy_static! {
-    pub(crate) static ref EC_GROUP_P256: EcGroup =
-        {
-            let mut g = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).expect("EcGroup");
-            // this is required for openssl 1.0.x (but not 1.1.x)
-            g.set_asn1_flag(Asn1Flag::NAMED_CURVE);
-            g
-        };
-    pub(crate) static ref EC_GROUP_P384: EcGroup =
-        {
-            let mut g = EcGroup::from_curve_name(Nid::SECP384R1).expect("EcGroup");
-            // this is required for openssl 1.0.x (but not 1.1.x)
-            g.set_asn1_flag(Asn1Flag::NAMED_CURVE);
-            g
-        };
+    pub(crate) static ref EC_GROUP_P256: EcGroup = { ec_group(Nid::X9_62_PRIME256V1) };
+    pub(crate) static ref EC_GROUP_P384: EcGroup = { ec_group(Nid::SECP384R1) };
+}
+
+fn ec_group(nid: Nid) -> EcGroup {
+    let mut g = EcGroup::from_curve_name(nid).expect("EcGroup");
+    // this is required for openssl 1.0.x (but not 1.1.x)
+    g.set_asn1_flag(Asn1Flag::NAMED_CURVE);
+    g
 }
 
 /// Make an RSA private/public key pair.
