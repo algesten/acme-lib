@@ -1,5 +1,5 @@
 use lazy_static::lazy_static;
-use openssl::ec::{EcGroup, EcKey};
+use openssl::ec::{Asn1Flag, EcGroup, EcKey};
 use openssl::hash::MessageDigest;
 use openssl::nid::Nid;
 use openssl::pkey::{self, PKey};
@@ -12,9 +12,19 @@ use crate::Result;
 
 lazy_static! {
     pub(crate) static ref EC_GROUP_P256: EcGroup =
-        { EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).expect("EcGroup") };
+        {
+            let mut g = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).expect("EcGroup");
+            // this is required for openssl 1.0.x (but not 1.1.x)
+            g.set_asn1_flag(Asn1Flag::NAMED_CURVE);
+            g
+        };
     pub(crate) static ref EC_GROUP_P384: EcGroup =
-        { EcGroup::from_curve_name(Nid::SECP384R1).expect("EcGroup") };
+        {
+            let mut g = EcGroup::from_curve_name(Nid::SECP384R1).expect("EcGroup");
+            // this is required for openssl 1.0.x (but not 1.1.x)
+            g.set_asn1_flag(Asn1Flag::NAMED_CURVE);
+            g
+        };
 }
 
 /// Make an RSA private/public key pair.
