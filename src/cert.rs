@@ -107,6 +107,12 @@ impl Certificate {
         &self.certificate
     }
 
+    /// The certificate as DER.
+    pub(crate) fn to_der(&self) -> Vec<u8> {
+        let x509 = X509::from_pem(self.certificate.as_bytes()).expect("from_pem");
+        x509.to_der().expect("to_der")
+    }
+
     /// Inspect the certificate to count the number of (whole) valid days left.
     ///
     /// It's up to the ACME API provider to decide how long an issued certificate is valid.

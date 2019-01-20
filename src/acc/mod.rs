@@ -1,13 +1,13 @@
 //
 use std::sync::Arc;
 
-use crate::api::{ApiAccount, ApiDirectory, ApiIdentifier, ApiOrder};
+use crate::api::{ApiAccount, ApiDirectory, ApiIdentifier, ApiOrder, ApiRevocation};
 use crate::cert::Certificate;
 use crate::order::{NewOrder, Order};
 use crate::persist::{Persist, PersistKey, PersistKind};
 use crate::req::req_expect_header;
 use crate::trans::Transport;
-use crate::util::read_json;
+use crate::util::{base64url, read_json};
 use crate::Result;
 
 mod akey;
@@ -145,10 +145,48 @@ impl<P: Persist> Account<P> {
         Ok(NewOrder { order })
     }
 
+    /// Revoke a certificate for the reason given.
+    ///
+    /// This calls the ACME API revoke endpoint, but does not affect the locally persisted
+    /// certs, the revoked certificate will still be available using [`certificate`].
+    ///
+    /// [`certificate`]: struct.Account.html#method.certificate
+    pub fn revoke_certificate(&self, cert: &Certificate, reason: RevocationReason) -> Result<()> {
+        // convert to base64url of the DER (which is not PEM).
+        let certificate = base64url(&cert.to_der());
+
+        let revoc = ApiRevocation {
+            certificate,
+            reason: reason as usize,
+        };
+
+        let url = &self.inner.api_directory.revokeCert;
+        self.inner.transport.call(url, &revoc)?;
+
+        Ok(())
+    }
+
     /// Access the underlying JSON object for debugging.
     pub fn api_account(&self) -> &ApiAccount {
         &self.inner.api_account
     }
+}
+
+/// Enumeration of reasons for revocation.
+///
+/// The reason codes are taken from [rfc5280](https://tools.ietf.org/html/rfc5280#section-5.3.1).
+pub enum RevocationReason {
+    Unspecified = 0,
+    KeyCompromise = 1,
+    CACompromise = 2,
+    AffiliationChanged = 3,
+    Superseded = 4,
+    CessationOfOperation = 5,
+    CertificateHold = 6,
+    // value 7 is not used
+    RemoveFromCRL = 8,
+    PrivilegeWithdrawn = 9,
+    AACompromise = 10,
 }
 
 #[cfg(test)]

@@ -325,6 +325,12 @@ pub struct ApiFinalize {
     pub csr: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApiRevocation {
+    pub certificate: String,
+    pub reason: usize,
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
