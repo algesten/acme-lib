@@ -1,6 +1,6 @@
 [[package]]
 name = "acme-lib"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "base64 0.10.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
