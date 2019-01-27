@@ -118,18 +118,24 @@ impl Certificate {
         }
     }
 
-    /// Access the PEM encoded private key.
+    /// The PEM encoded private key.
     pub fn private_key(&self) -> &str {
         &self.private_key
     }
 
-    /// Access the PEM encoded issued certificate.
+    /// The private key as DER.
+    pub fn private_key_der(&self) -> Vec<u8> {
+        let x509 = X509::from_pem(self.private_key.as_bytes()).expect("from_pem");
+        x509.to_der().expect("to_der")
+    }
+
+    /// The PEM encoded issued certificate.
     pub fn certificate(&self) -> &str {
         &self.certificate
     }
 
-    /// The certificate as DER.
-    pub(crate) fn to_der(&self) -> Vec<u8> {
+    /// The issued certificate as DER.
+    pub fn certificate_der(&self) -> Vec<u8> {
         let x509 = X509::from_pem(self.certificate.as_bytes()).expect("from_pem");
         x509.to_der().expect("to_der")
     }

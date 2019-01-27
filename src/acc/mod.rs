@@ -153,7 +153,7 @@ impl<P: Persist> Account<P> {
     /// [`certificate`]: struct.Account.html#method.certificate
     pub fn revoke_certificate(&self, cert: &Certificate, reason: RevocationReason) -> Result<()> {
         // convert to base64url of the DER (which is not PEM).
-        let certificate = base64url(&cert.to_der());
+        let certificate = base64url(&cert.certificate_der());
 
         let revoc = ApiRevocation {
             certificate,
