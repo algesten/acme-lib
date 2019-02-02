@@ -57,7 +57,7 @@ impl<'a> PersistKey<'a> {
             "{}_{}_{}",
             self.realm,
             self.kind.name(),
-            self.key.replace('.', "_")
+            self.key.replace('.', "_").replace('*', "STAR")
         )
     }
 }
