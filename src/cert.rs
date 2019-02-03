@@ -125,8 +125,8 @@ impl Certificate {
 
     /// The private key as DER.
     pub fn private_key_der(&self) -> Vec<u8> {
-        let x509 = X509::from_pem(self.private_key.as_bytes()).expect("from_pem");
-        x509.to_der().expect("to_der")
+        let pkey = PKey::private_key_from_pem(self.private_key.as_bytes()).expect("from_pem");
+        pkey.private_key_to_der().expect("private_key_to_der")
     }
 
     /// The PEM encoded issued certificate.
