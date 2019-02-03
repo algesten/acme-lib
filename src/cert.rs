@@ -160,6 +160,7 @@ impl Certificate {
         let not_after = format!("{}", x509.not_after());
         // Display trait produces this format, which is kinda dumb.
         // Apr 19 08:48:46 2019 GMT
+        debug!("Interpret cert time: {}", not_after);
         let expires = time::strptime(&not_after, "%h %d %H:%M:%S %Y %Z").expect("strptime");
 
         let dur = expires - time::now();
