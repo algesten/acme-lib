@@ -160,11 +160,25 @@ impl Certificate {
         let not_after = format!("{}", x509.not_after());
         // Display trait produces this format, which is kinda dumb.
         // Apr 19 08:48:46 2019 GMT
-        debug!("Interpret cert time: {}", not_after);
-        let expires = time::strptime(&not_after, "%h %d %H:%M:%S %Y %Z").expect("strptime");
-
+        let expires = parse_date(&not_after);
         let dur = expires - time::now();
 
         dur.num_days()
+    }
+}
+
+fn parse_date(s: &str) -> time::Tm {
+    debug!("Parse date/time: {}", s);
+    time::strptime(s, "%h %e %H:%M:%S %Y %Z").expect("strptime")
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_parse_date() {
+        let x = parse_date("May  3 07:40:15 2019 GMT");
+        assert_eq!(time::strftime("%F %T", &x).unwrap(), "2019-05-03 07:40:15");
     }
 }
