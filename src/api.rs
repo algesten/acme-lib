@@ -46,6 +46,14 @@ impl ApiProblem {
     pub fn is_bad_nonce(&self) -> bool {
         self._type == "badNonce"
     }
+    pub fn is_jwt_verification_error(&self) -> bool {
+        self._type == "urn:acme:error:malformed"
+            && self
+                .detail
+                .as_ref()
+                .map(|s| s == "JWS verification error")
+                .unwrap_or(false)
+    }
 }
 
 impl ::std::fmt::Display for ApiProblem {

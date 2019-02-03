@@ -82,6 +82,12 @@ impl Transport {
             if let Err(problem) = &result {
                 if problem.is_bad_nonce() {
                     // retry the request with a new nonce.
+                    debug!("Retrying on bad nonce");
+                    continue;
+                }
+                // it seems we sometimes make bad JWTs. Why?!
+                if problem.is_jwt_verification_error() {
+                    debug!("Retrying on: {}", problem);
                     continue;
                 }
             }
