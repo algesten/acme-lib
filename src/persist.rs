@@ -16,6 +16,8 @@ use crate::Result;
 /// Kinds of [persistence keys](struct.PersistKey.html).
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum PersistKind {
+    /// Persisted account private key.
+    AccountPrivateKey,
     /// Persisted private key.
     PrivateKey,
     /// Persisted certificate.
@@ -27,6 +29,7 @@ impl PersistKind {
         match self {
             PersistKind::Certificate => "crt",
             PersistKind::PrivateKey => "key",
+            PersistKind::AccountPrivateKey => "key",
         }
     }
 }
