@@ -6,7 +6,7 @@ use openssl::pkey::{self, PKey};
 use openssl::rsa::Rsa;
 use openssl::stack::Stack;
 use openssl::x509::extension::SubjectAlternativeName;
-use openssl::x509::{X509NameBuilder, X509Req, X509ReqBuilder, X509};
+use openssl::x509::{X509Req, X509ReqBuilder, X509};
 
 use crate::Result;
 
@@ -73,26 +73,16 @@ pub(crate) fn create_csr(
     // set public key in builder
     req_bld.set_pubkey(&pkey_pub).expect("set_pubkey");
 
-    // the CN, first element in domains
-    let mut cn_bld = X509NameBuilder::new().expect("X509NameBuilder");
-    cn_bld
-        .append_entry_by_text("CN", domains[0])
-        .map_err(|e| format!("CSR failed: {}", e))?;
-    let cn = cn_bld.build();
-    req_bld.set_subject_name(&cn).expect("set_subject_name");
-
-    // the rest of domains are alt names
-    if domains.len() > 1 {
-        let mut stack = Stack::new().expect("Stack::new");
-        let ctx = req_bld.x509v3_context(None);
-        for domain in &domains[1..] {
-            let mut an = SubjectAlternativeName::new();
-            an.dns(domain);
-            let ext = an.build(&ctx).expect("SubjectAlternativeName::build");
-            stack.push(ext).expect("Stack::push");
-        }
-        req_bld.add_extensions(&stack).expect("add_extensions");
-    }
+    // set all domains as alt names
+    let mut stack = Stack::new().expect("Stack::new");
+    let ctx = req_bld.x509v3_context(None);
+    let as_lst = domains.iter().map(|&e| format!("DNS:{}", e)).collect::<Vec<_>>().join(", ");
+    let as_lst = as_lst[4..].to_string();
+    let mut an = SubjectAlternativeName::new();
+    an.dns(&as_lst);
+    let ext = an.build(&ctx).expect("SubjectAlternativeName::build");
+    stack.push(ext).expect("Stack::push");
+    req_bld.add_extensions(&stack).expect("add_extensions");
 
     // sign it
     req_bld
