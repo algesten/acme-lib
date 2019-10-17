@@ -354,5 +354,4 @@ mod test {
         let x = serde_json::to_string(&ApiEmptyObject).unwrap();
         assert_eq!("{}", x);
     }
-
 }

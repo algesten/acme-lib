@@ -76,7 +76,11 @@ pub(crate) fn create_csr(
     // set all domains as alt names
     let mut stack = Stack::new().expect("Stack::new");
     let ctx = req_bld.x509v3_context(None);
-    let as_lst = domains.iter().map(|&e| format!("DNS:{}", e)).collect::<Vec<_>>().join(", ");
+    let as_lst = domains
+        .iter()
+        .map(|&e| format!("DNS:{}", e))
+        .collect::<Vec<_>>()
+        .join(", ");
     let as_lst = as_lst[4..].to_string();
     let mut an = SubjectAlternativeName::new();
     an.dns(&as_lst);
