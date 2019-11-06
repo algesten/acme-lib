@@ -43,12 +43,12 @@ impl Transport {
     }
 
     /// Make call using the full jwk. Only for the first newAccount request.
-    pub fn call_jwk<T: Serialize + ?Sized>(&self, url: &str, body: &T) -> Result<ureq::Response> {
+    pub fn call_jwk<T: Serialize + ?Sized>(&self, url: &str, body: &T) -> Result<reqwest::Response> {
         self.do_call(url, body, jws_with_jwk)
     }
 
     /// Make call using the key id
-    pub fn call<T: Serialize + ?Sized>(&self, url: &str, body: &T) -> Result<ureq::Response> {
+    pub fn call<T: Serialize + ?Sized>(&self, url: &str, body: &T) -> Result<reqwest::Response> {
         self.do_call(url, body, jws_with_kid)
     }
 
@@ -57,7 +57,7 @@ impl Transport {
         url: &str,
         body: &T,
         make_body: F,
-    ) -> Result<ureq::Response> {
+    ) -> Result<reqwest::Response> {
         // The ACME API may at any point invalidate all nonces. If we detect such an
         // error, we loop until the server accepts the nonce.
         loop {
@@ -70,29 +70,30 @@ impl Transport {
             debug!("Call endpoint {}", url);
 
             // Post it to the URL
-            let response = req_post(url, &body);
-
-            // Regardless of the request being a success or not, there might be
-            // a nonce in the response.
-            self.nonce_pool.extract_nonce(&response);
-
+            let response = req_post(&self.nonce_pool.client.client, url, &body);
             // Turn errors into ApiProblem.
             let result = req_handle_error(response);
 
-            if let Err(problem) = &result {
-                if problem.is_bad_nonce() {
-                    // retry the request with a new nonce.
-                    debug!("Retrying on bad nonce");
-                    continue;
+            // let's hope the nonce is not important, because reqwest won't let us access response headers in error cases anyway
+            if result.is_ok() {
+                let r = result.unwrap();
+                self.nonce_pool.extract_nonce(&r);
+                return Ok(r);
+            } else {
+                if let Err(problem) = &result {
+                    if problem.is_bad_nonce() {
+                        // retry the request with a new nonce.
+                        debug!("Retrying on bad nonce");
+                        continue;
+                    }
+                    // it seems we sometimes make bad JWTs. Why?!
+                    if problem.is_jwt_verification_error() {
+                        debug!("Retrying on: {}", problem);
+                        continue;
+                    }
                 }
-                // it seems we sometimes make bad JWTs. Why?!
-                if problem.is_jwt_verification_error() {
-                    debug!("Retrying on: {}", problem);
-                    continue;
-                }
+                return Ok(result?);
             }
-
-            return Ok(result?);
         }
     }
 }
@@ -102,21 +103,35 @@ impl Transport {
 pub(crate) struct NoncePool {
     nonce_url: String,
     pool: Mutex<VecDeque<String>>,
+    client: ClientWrapper,
+}
+
+pub(crate) struct ClientWrapper {
+    client: reqwest::Client
+}
+
+impl std::default::Default for ClientWrapper {
+    fn default() -> Self {
+        ClientWrapper{
+            client: reqwest::Client::new()
+        }
+    }
 }
 
 impl NoncePool {
-    pub fn new(nonce_url: &str) -> Self {
+    pub fn new(client: reqwest::Client, nonce_url: &str) -> Self {
         NoncePool {
+            client: ClientWrapper{ client },
             nonce_url: nonce_url.into(),
             ..Default::default()
         }
     }
 
-    fn extract_nonce(&self, res: &ureq::Response) {
-        if let Some(nonce) = res.header("replay-nonce") {
+    fn extract_nonce(&self, res: &reqwest::Response) {
+        if let Ok(nonce) = req_expect_header(res,"replay-nonce") {
             trace!("Extract nonce");
             let mut pool = self.pool.lock().unwrap();
-            pool.push_back(nonce.to_string());
+            pool.push_back(nonce);
             if pool.len() > 10 {
                 pool.pop_front();
             }
@@ -132,7 +147,7 @@ impl NoncePool {
             }
         }
         debug!("Request new nonce");
-        let res = req_head(&self.nonce_url);
+        let res = req_handle_error(req_head(&self.client.client, &self.nonce_url))?;
         Ok(req_expect_header(&res, "replay-nonce")?)
     }
 }

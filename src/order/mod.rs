@@ -23,11 +23,12 @@ use std::thread;
 use std::time::Duration;
 
 use crate::acc::AccountInner;
-use crate::api::{ApiAuth, ApiEmptyString, ApiFinalize, ApiOrder};
+use crate::api::{ApiAuth, ApiEmptyString, ApiFinalize, ApiOrder, ApiProblem};
 use crate::cert::{create_csr, Certificate};
 use crate::persist::{Persist, PersistKey, PersistKind};
 use crate::util::{base64url, read_json};
 use crate::Result;
+use std::error::Error;
 
 mod auth;
 
@@ -56,11 +57,11 @@ pub(crate) fn refresh_order<P: Persist>(
     url: String,
     want_status: &'static str,
 ) -> Result<Order<P>> {
-    let res = inner.transport.call(&url, &ApiEmptyString)?;
+    let mut res = inner.transport.call(&url, &ApiEmptyString)?;
 
     // our test rig requires the order to be in `want_status`.
     // api_order_of is different for test compilation
-    let api_order = api_order_of(res, want_status)?;
+    let api_order = api_order_of(&mut res, want_status)?;
 
     Ok(Order {
         inner: inner.clone(),
@@ -70,7 +71,7 @@ pub(crate) fn refresh_order<P: Persist>(
 }
 
 #[cfg(not(test))]
-fn api_order_of(res: ureq::Response, _want_status: &str) -> Result<ApiOrder> {
+fn api_order_of(res: &mut reqwest::Response, _want_status: &str) -> Result<ApiOrder> {
     read_json(res)
 }
 
@@ -157,8 +158,8 @@ impl<P: Persist> NewOrder<P> {
         let mut result = vec![];
         if let Some(authorizations) = &self.order.api_order.authorizations {
             for auth_url in authorizations {
-                let res = self.order.inner.transport.call(auth_url, &ApiEmptyString)?;
-                let api_auth: ApiAuth = read_json(res)?;
+                let mut res = self.order.inner.transport.call(auth_url, &ApiEmptyString)?;
+                let api_auth: ApiAuth = read_json(&mut res)?;
                 result.push(Auth::new(&self.order.inner, api_auth, auth_url));
             }
         }
@@ -302,7 +303,7 @@ impl<P: Persist> CertOrder<P> {
         let inner = self.order.inner;
         let realm = inner.contact_email.clone();
 
-        let res = inner.transport.call(&url, &ApiEmptyString)?;
+        let mut res = inner.transport.call(&url, &ApiEmptyString)?;
 
         // save key and cert into persistence
         let persist = &inner.persist;
@@ -312,7 +313,14 @@ impl<P: Persist> CertOrder<P> {
         debug!("Save private key: {}", pk_key);
         persist.put(&pk_key, &pkey_pem_bytes)?;
 
-        let cert = res.into_string()?;
+        let cert = match res.text() {
+            Ok(cert) => Ok(cert),
+            Err(err) => Err(ApiProblem{
+                _type: "reqwest".to_string(),
+                detail: Some(err.description().to_string()),
+                subproblems: None
+            })
+        }?;
         let pk_crt = PersistKey::new(&realm, PersistKind::Certificate, &primary_name);
         debug!("Save certificate: {}", pk_crt);
         persist.put(&pk_crt, cert.as_bytes())?;

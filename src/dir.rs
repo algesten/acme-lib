@@ -41,19 +41,24 @@ pub struct Directory<P: Persist> {
     persist: P,
     nonce_pool: Arc<NoncePool>,
     api_directory: ApiDirectory,
+    //client: reqwest::Client
 }
 
 impl<P: Persist> Directory<P> {
     /// Create a directory over a persistence implementation and directory url.
     pub fn from_url(persist: P, url: DirectoryUrl) -> Result<Directory<P>> {
+        Directory::from_url_with_client(persist, url, reqwest::Client::new())
+    }
+
+    pub fn from_url_with_client(persist: P, url: DirectoryUrl, client: reqwest::Client) -> Result<Directory<P>> {
         let dir_url = url.to_url();
-        let res = req_handle_error(req_get(&dir_url))?;
-        let api_directory: ApiDirectory = read_json(res)?;
-        let nonce_pool = Arc::new(NoncePool::new(&api_directory.newNonce));
+        let mut res = req_handle_error(req_get(&client,&dir_url))?;
+        let api_directory: ApiDirectory = read_json(&mut res)?;
+        let nonce_pool = Arc::new(NoncePool::new(client, &api_directory.newNonce));
         Ok(Directory {
             persist,
             nonce_pool,
-            api_directory,
+            api_directory
         })
     }
 
@@ -95,10 +100,10 @@ impl<P: Persist> Directory<P> {
         };
 
         let mut transport = Transport::new(&self.nonce_pool, acme_key);
-        let res = transport.call_jwk(&self.api_directory.newAccount, &acc)?;
+        let mut res = transport.call_jwk(&self.api_directory.newAccount, &acc)?;
         let kid = req_expect_header(&res, "location")?;
         debug!("Key id is: {}", kid);
-        let api_account: ApiAccount = read_json(res)?;
+        let api_account: ApiAccount = read_json(&mut res)?;
 
         // fill in the server returned key id
         transport.set_key_id(kid);
