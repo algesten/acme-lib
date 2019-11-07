@@ -41,16 +41,41 @@ pub struct Directory<P: Persist> {
     persist: P,
     nonce_pool: Arc<NoncePool>,
     api_directory: ApiDirectory,
-    //client: reqwest::Client
+}
+
+/// Just a simple struct allowing configure of proxies for now
+/// (basically to avoid leaking reqwest types into acme-lib user dependencies)
+pub struct ClientConfig {
+    https_proxy: Option<String>
+}
+
+impl ClientConfig {
+    pub fn default() -> ClientConfig {
+        ClientConfig {
+            https_proxy: None
+        }
+    }
+    pub fn with_proxy(proxy: String) -> ClientConfig {
+        ClientConfig {
+            https_proxy: Some(proxy)
+        }
+    }
 }
 
 impl<P: Persist> Directory<P> {
     /// Create a directory over a persistence implementation and directory url.
     pub fn from_url(persist: P, url: DirectoryUrl) -> Result<Directory<P>> {
-        Directory::from_url_with_client(persist, url, reqwest::Client::new())
+        Directory::from_url_with_config(persist, url, &ClientConfig::default())
     }
 
-    pub fn from_url_with_client(persist: P, url: DirectoryUrl, client: reqwest::Client) -> Result<Directory<P>> {
+    pub fn from_url_with_config(persist: P, url: DirectoryUrl, client_config: &ClientConfig) -> Result<Directory<P>> {
+        let builder = reqwest::ClientBuilder::new();
+        let client = match &client_config.https_proxy {
+                                Some(proxy) => reqwest::Proxy::https(proxy)
+                                    .and_then(|p| builder.proxy(p).build()),
+                                None => Ok(reqwest::Client::new())
+        }.or_else(|_| Err("failed to setup proxy for client"))?;
+
         let dir_url = url.to_url();
         let mut res = req_handle_error(req_get(&client,&dir_url))?;
         let api_directory: ApiDirectory = read_json(&mut res)?;
