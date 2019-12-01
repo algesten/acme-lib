@@ -53,21 +53,17 @@ impl<'a> PersistKey<'a> {
         let realm = h.finish();
         PersistKey { realm, kind, key }
     }
+}
 
-    /// Make a string representation of this key. Same as the Display trait.
-    pub fn to_string(&self) -> String {
-        format!(
+impl<'a> ::std::fmt::Display for PersistKey<'a> {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        write!(
+            f,
             "{}_{}_{}",
             self.realm,
             self.kind.name(),
             self.key.replace('.', "_").replace('*', "STAR")
         )
-    }
-}
-
-impl<'a> ::std::fmt::Display for PersistKey<'a> {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        write!(f, "{}", self.to_string())
     }
 }
 

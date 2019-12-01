@@ -27,7 +27,7 @@ pub(crate) struct Transport {
 impl Transport {
     pub fn new(nonce_pool: &Arc<NoncePool>, acme_key: AcmeKey) -> Self {
         Transport {
-            acme_key: acme_key,
+            acme_key,
             nonce_pool: nonce_pool.clone(),
         }
     }
