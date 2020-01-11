@@ -13,7 +13,7 @@ Install it like so:
 
 ```toml
 [dependencies]
-acme-lib = "0.1"
+acme-lib = "0.5"
 ```
 
 # Example
