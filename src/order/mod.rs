@@ -207,14 +207,11 @@ impl<P: Persist> CsrOrder<P> {
     pub fn finalize(
         self,
         private_key_pem: &str,
-        public_key_pem: &str,
         delay_millis: u64,
     ) -> Result<CertOrder<P>> {
         let pkey_pri = PKey::private_key_from_pem(private_key_pem.as_bytes())
             .map_err(|e| format!("Error reading private key PEM: {}", e))?;
-        let pkey_pub = PKey::public_key_from_pem(public_key_pem.as_bytes())
-            .map_err(|e| format!("Error reading public key PEM: {}", e))?;
-        self.finalize_pkey(pkey_pri, pkey_pub, delay_millis)
+        self.finalize_pkey(pkey_pri, delay_millis)
     }
 
     /// Lower level finalize call that works directly with the openssl crate structures.
@@ -227,7 +224,6 @@ impl<P: Persist> CsrOrder<P> {
     pub fn finalize_pkey(
         self,
         private_key: PKey<pkey::Private>,
-        public_key: PKey<pkey::Public>,
         delay_millis: u64,
     ) -> Result<CertOrder<P>> {
         //
@@ -235,7 +231,7 @@ impl<P: Persist> CsrOrder<P> {
         let domains = self.order.api_order.domains();
 
         // csr from private key and authorized domains.
-        let csr = create_csr(&private_key, &public_key, &domains)?;
+        let csr = create_csr(&private_key, &domains)?;
 
         // this is not the same as PEM.
         let csr_der = csr.to_der().expect("to_der()");
@@ -354,8 +350,8 @@ mod test {
         let ord = acc.new_order("acmetest.example.com", &[])?;
         // shortcut auth
         let ord = CsrOrder { order: ord.order };
-        let (pri_key, pub_key) = cert::create_p256_key();
-        let _ord = ord.finalize_pkey(pri_key, pub_key, 1)?;
+        let pkey = cert::create_p256_key();
+        let _ord = ord.finalize_pkey(pkey, 1)?;
         Ok(())
     }
 
@@ -370,8 +366,8 @@ mod test {
 
         // shortcut auth
         let ord = CsrOrder { order: ord.order };
-        let (pri_key, pub_key) = cert::create_p256_key();
-        let ord = ord.finalize_pkey(pri_key, pub_key, 1)?;
+        let pkey = cert::create_p256_key();
+        let ord = ord.finalize_pkey(pkey, 1)?;
 
         let cert = ord.download_and_save_cert()?;
         assert_eq!("CERT HERE", cert.certificate());

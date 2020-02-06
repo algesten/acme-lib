@@ -26,44 +26,25 @@ fn ec_group(nid: Nid) -> EcGroup {
 ///
 /// This library does not check the number of bits used to create the key pair.
 /// For Let's Encrypt, the bits must be between 2048 and 4096.
-pub fn create_rsa_key(bits: u32) -> (PKey<pkey::Private>, PKey<pkey::Public>) {
+pub fn create_rsa_key(bits: u32) -> PKey<pkey::Private> {
     let pri_key_rsa = Rsa::generate(bits).expect("Rsa::generate");
-    let n = pri_key_rsa.n().to_owned().expect("BigNumRef::to_owned()");
-    let e = pri_key_rsa.e().to_owned().expect("BigNumRef::to_owned()");
-    let pub_key_rsa = Rsa::from_public_components(n, e).expect("Rsa::from_public_compontents");
-    (
-        PKey::from_rsa(pri_key_rsa).expect("from_rsa"),
-        PKey::from_rsa(pub_key_rsa).expect("from_rsa"),
-    )
+    PKey::from_rsa(pri_key_rsa).expect("from_rsa")
 }
 
 /// Make a P-256 private/public key pair.
-pub fn create_p256_key() -> (PKey<pkey::Private>, PKey<pkey::Public>) {
+pub fn create_p256_key() -> PKey<pkey::Private> {
     let pri_key_ec = EcKey::generate(&*EC_GROUP_P256).expect("EcKey");
-    let pub_key_ec =
-        EcKey::from_public_key(&*EC_GROUP_P256, pri_key_ec.public_key()).expect("EcKeyPub");
-
-    (
-        PKey::from_ec_key(pri_key_ec).expect("from_ec_key"),
-        PKey::from_ec_key(pub_key_ec).expect("from_ec_key_pub"),
-    )
+    PKey::from_ec_key(pri_key_ec).expect("from_ec_key")
 }
 
 /// Make a P-384 private/public key pair.
-pub fn create_p384_key() -> (PKey<pkey::Private>, PKey<pkey::Public>) {
+pub fn create_p384_key() -> PKey<pkey::Private> {
     let pri_key_ec = EcKey::generate(&*EC_GROUP_P384).expect("EcKey");
-    let pub_key_ec =
-        EcKey::from_public_key(&*EC_GROUP_P384, pri_key_ec.public_key()).expect("EcKeyPub");
-
-    (
-        PKey::from_ec_key(pri_key_ec).expect("from_ec_key"),
-        PKey::from_ec_key(pub_key_ec).expect("from_ec_key_pub"),
-    )
+    PKey::from_ec_key(pri_key_ec).expect("from_ec_key")
 }
 
 pub(crate) fn create_csr(
-    pkey_pri: &PKey<pkey::Private>,
-    pkey_pub: &PKey<pkey::Public>,
+    pkey: &PKey<pkey::Private>,
     domains: &[&str],
 ) -> Result<X509Req> {
     //
@@ -71,7 +52,7 @@ pub(crate) fn create_csr(
     let mut req_bld = X509ReqBuilder::new().expect("X509ReqBuilder");
 
     // set public key in builder
-    req_bld.set_pubkey(&pkey_pub).expect("set_pubkey");
+    req_bld.set_pubkey(&pkey).expect("set_pubkey");
 
     // set all domains as alt names
     let mut stack = Stack::new().expect("Stack::new");
@@ -86,7 +67,7 @@ pub(crate) fn create_csr(
 
     // sign it
     req_bld
-        .sign(pkey_pri, MessageDigest::sha256())
+        .sign(pkey, MessageDigest::sha256())
         .expect("csr_sign");
 
     // the csr
