@@ -92,7 +92,7 @@ let ord_csr = loop {
     ord_new.refresh()?;
 };
 
-// Ownership is proven. Create a private/public key pair for
+// Ownership is proven. Create a private key for
 // the certificate. These are provided for convenience, you
 // can provide your own keypair instead if you want.
 let (pkey_pri, pkey_pub) = create_p384_key();

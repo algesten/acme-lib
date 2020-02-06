@@ -175,8 +175,9 @@ impl<P: Persist> NewOrder<P> {
 ///
 /// To submit the CSR is called "finalizing" the order.
 ///
-/// To finalize, the user supplies a private and public key pair. This library provides
-/// [functions to create key pairs], but the user can opt for creating them in some other way.
+/// To finalize, the user supplies a private key (from which a public key is derived). This 
+/// library provides [functions to create private keys], but the user can opt for creating them 
+/// in some other way.
 ///
 /// This library makes no attempt at validating which key algorithms are used. Unsupported
 /// algorithms will show as an error when finalizing the order. It is up to the ACME API
@@ -195,7 +196,7 @@ pub struct CsrOrder<P: Persist> {
 }
 
 impl<P: Persist> CsrOrder<P> {
-    /// Finalize the order by providing a private and public key pair as PEM.
+    /// Finalize the order by providing a private key as PEM.
     ///
     /// Once the CSR has been submitted, the order goes into a `processing` status,
     /// where we must poll until the status changes. The `delay_millis` is the

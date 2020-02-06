@@ -89,17 +89,17 @@
 //!     ord_new.refresh()?;
 //! };
 //!
-//! // Ownership is proven. Create a private/public key pair for
+//! // Ownership is proven. Create a private key for
 //! // the certificate. These are provided for convenience, you
 //! // can provide your own keypair instead if you want.
-//! let (pkey_pri, pkey_pub) = create_p384_key();
+//! let pkey_pri = create_p384_key();
 //!
 //! // Submit the CSR. This causes the ACME provider to enter a
 //! // state of "processing" that must be polled until the
 //! // certificate is either issued or rejected. Again we poll
 //! // for the status change.
 //! let ord_cert =
-//!     ord_csr.finalize_pkey(pkey_pri, pkey_pub, 5000)?;
+//!     ord_csr.finalize_pkey(pkey_pri, 5000)?;
 //!
 //! // Now download the certificate. Also stores the cert in
 //! // the persistence.

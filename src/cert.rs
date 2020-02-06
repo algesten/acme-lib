@@ -22,7 +22,7 @@ fn ec_group(nid: Nid) -> EcGroup {
     g
 }
 
-/// Make an RSA private/public key pair.
+/// Make an RSA private key (from which we can derive a public key).
 ///
 /// This library does not check the number of bits used to create the key pair.
 /// For Let's Encrypt, the bits must be between 2048 and 4096.
@@ -31,13 +31,13 @@ pub fn create_rsa_key(bits: u32) -> PKey<pkey::Private> {
     PKey::from_rsa(pri_key_rsa).expect("from_rsa")
 }
 
-/// Make a P-256 private/public key pair.
+/// Make a P-256 private key (from which we can derive a public key).
 pub fn create_p256_key() -> PKey<pkey::Private> {
     let pri_key_ec = EcKey::generate(&*EC_GROUP_P256).expect("EcKey");
     PKey::from_ec_key(pri_key_ec).expect("from_ec_key")
 }
 
-/// Make a P-384 private/public key pair.
+/// Make a P-384 private key pair (from which we can derive a public key).
 pub fn create_p384_key() -> PKey<pkey::Private> {
     let pri_key_ec = EcKey::generate(&*EC_GROUP_P384).expect("EcKey");
     PKey::from_ec_key(pri_key_ec).expect("from_ec_key")
@@ -48,7 +48,7 @@ pub(crate) fn create_csr(pkey: &PKey<pkey::Private>, domains: &[&str]) -> Result
     // the csr builder
     let mut req_bld = X509ReqBuilder::new().expect("X509ReqBuilder");
 
-    // set public key in builder
+    // set private/public key in builder
     req_bld.set_pubkey(&pkey).expect("set_pubkey");
 
     // set all domains as alt names
