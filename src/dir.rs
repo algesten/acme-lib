@@ -69,7 +69,11 @@ impl<P: Persist> Directory<P> {
     /// account is active and working.
     pub fn account(&self, contact_email: &str) -> Result<Account<P>> {
         // key in persistence for acme account private key
-        let pem_key = PersistKey::new(&contact_email, PersistKind::AccountPrivateKey, "acme_account");
+        let pem_key = PersistKey::new(
+            &contact_email,
+            PersistKind::AccountPrivateKey,
+            "acme_account",
+        );
 
         // Get the key from a saved PEM, or from creating a new
         let mut is_new = false;
@@ -213,5 +217,4 @@ mod test {
     //     );
     //     Ok(())
     // }
-
 }

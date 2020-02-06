@@ -204,11 +204,7 @@ impl<P: Persist> CsrOrder<P> {
     /// This is a convenience wrapper that in turn calls the lower level [`finalize_pkey`].
     ///
     /// [`finalize_pkey`]: struct.CsrOrder.html#method.finalize_pkey
-    pub fn finalize(
-        self,
-        private_key_pem: &str,
-        delay_millis: u64,
-    ) -> Result<CertOrder<P>> {
+    pub fn finalize(self, private_key_pem: &str, delay_millis: u64) -> Result<CertOrder<P>> {
         let pkey_pri = PKey::private_key_from_pem(private_key_pem.as_bytes())
             .map_err(|e| format!("Error reading private key PEM: {}", e))?;
         self.finalize_pkey(pkey_pri, delay_millis)
