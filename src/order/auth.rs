@@ -123,6 +123,20 @@ impl<P: Persist> Auth<P> {
             .expect("dns-challenge")
     }
 
+    /// Get the TLS ALPN challenge.
+    ///
+    /// The TLS ALPN challenge is a certificate that must be served when a
+    /// request is made for the ALPN protocol "tls-alpn-01". The certificate
+    /// must contain a single dNSName SAN containing the domain being
+    /// validated, as well as an ACME extension containing the SHA256 of the
+    /// key authorization.
+    pub fn tls_alpn_challenge(&self) -> Challenge<P, TlsAlpn> {
+        self.api_auth
+            .tls_alpn_challenge()
+            .map(|c| Challenge::new(&self.inner, c.clone(), &self.auth_url))
+            .expect("tls-alpn-challenge")
+    }
+
     /// Access the underlying JSON object for debugging. We don't
     /// refresh the authorization when the corresponding challenge is validated,
     /// so there will be no changes to see here.
@@ -139,7 +153,11 @@ pub struct Http;
 #[doc(hidden)]
 pub struct Dns;
 
-/// A DNS or HTTP challenge as obtained from the [`Auth`].
+/// Marker type for tls alpn challenges.
+#[doc(hidden)]
+pub struct TlsAlpn;
+
+/// A DNS, HTTP, or TLS-ALPN challenge as obtained from the [`Auth`].
 ///
 /// [`Auth`]: struct.Auth.html
 pub struct Challenge<P: Persist, A> {
@@ -176,6 +194,15 @@ impl<P: Persist> Challenge<P, Dns> {
     pub fn dns_proof(&self) -> String {
         let acme_key = self.inner.transport.acme_key();
         key_authorization(&self.api_challenge.token, acme_key, true)
+    }
+}
+
+impl<P: Persist> Challenge<P, TlsAlpn> {
+    /// The `proof` is the contents of the ACME extension to be placed in the
+    /// certificate used for validation.
+    pub fn tls_alpn_proof(&self) -> [u8; 32] {
+        let acme_key = self.inner.transport.acme_key();
+        sha256(key_authorization(&self.api_challenge.token, acme_key, false).as_bytes())
     }
 }
 
