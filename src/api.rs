@@ -47,7 +47,8 @@ impl ApiProblem {
         self._type == "badNonce"
     }
     pub fn is_jwt_verification_error(&self) -> bool {
-        self._type == "urn:acme:error:malformed"
+        (self._type == "urn:acme:error:malformed"
+            || self._type == "urn:ietf:params:acme:error:malformed")
             && self
                 .detail
                 .as_ref()
