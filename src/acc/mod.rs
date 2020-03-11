@@ -138,7 +138,10 @@ impl<P: Persist> Account<P> {
         let new_order_url = &self.inner.api_directory.newOrder;
 
         let mut res = self.inner.transport.call(new_order_url, &order)?;
-        let order_url = req_expect_header(&res, "location")?;
+        let order_url = match req_expect_header(&res, "location") {
+            Ok(url) => Ok(url),
+            Err(err) => { println!("{:?}", &res.text()); Err(err) }
+        }?;
         let api_order: ApiOrder = read_json(&mut res)?;
 
         let order = Order::new(&self.inner, api_order, order_url);
