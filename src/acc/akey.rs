@@ -4,7 +4,7 @@ use openssl::pkey;
 use crate::cert::EC_GROUP_P256;
 use crate::Result;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct AcmeKey {
     private_key: EcKey<pkey::Private>,
     /// set once we contacted the ACME API to figure out the key id

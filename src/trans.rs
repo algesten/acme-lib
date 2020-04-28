@@ -18,7 +18,7 @@ use crate::Result;
 /// 2. `call_jwk()` against newAccount url
 /// 3. `set_key_id` from the returned `Location` header.
 /// 4. `call()` for all calls after that.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct Transport {
     acme_key: AcmeKey,
     nonce_pool: Arc<NoncePool>,
@@ -98,7 +98,7 @@ impl Transport {
 }
 
 /// Shared pool of nonces.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub(crate) struct NoncePool {
     nonce_url: String,
     pool: Mutex<VecDeque<String>>,

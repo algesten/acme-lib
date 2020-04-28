@@ -28,6 +28,7 @@ use crate::Result;
 /// [ownership proof]: ../index.html#domain-ownership
 /// [HTTP]: #method.http_challenge
 /// [DNS]: #method.dns_challenge
+#[derive(Debug)]
 pub struct Auth<P: Persist> {
     inner: Arc<AccountInner<P>>,
     api_auth: ApiAuth,
