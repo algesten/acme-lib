@@ -14,7 +14,7 @@ mod akey;
 
 pub(crate) use self::akey::AcmeKey;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct AccountInner<P: Persist> {
     pub persist: P,
     pub transport: Transport,
