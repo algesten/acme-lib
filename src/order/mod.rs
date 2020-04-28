@@ -293,7 +293,7 @@ impl<P: Persist> CertOrder<P> {
         let primary_name = self.order.api_order.domains()[0].to_string();
         let url = self.order.api_order.certificate.expect("certificate url");
         let inner = self.order.inner;
-        let realm = inner.contact_email.clone();
+        let realm = inner.contact_email.as_deref().unwrap_or(&"");
 
         let res = inner.transport.call(&url, &ApiEmptyString)?;
 

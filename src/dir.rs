@@ -67,10 +67,12 @@ impl<P: Persist> Directory<P> {
     ///
     /// Either way the `newAccount` API endpoint is called and thereby ensures the
     /// account is active and working.
-    pub fn account(&self, contact_email: &str) -> Result<Account<P>> {
+    pub fn account(&self, contact_email: Option<&str>) -> Result<Account<P>> {
+        let realm = contact_email.as_ref().unwrap_or(&"");
+
         // key in persistence for acme account private key
         let pem_key = PersistKey::new(
-            &contact_email,
+            &realm,
             PersistKind::AccountPrivateKey,
             "acme_account",
         );
@@ -89,11 +91,17 @@ impl<P: Persist> Directory<P> {
             AcmeKey::new()
         };
 
+        let contact = if let Some(contact_email) = contact_email {
+            vec![format!("mailto:{}", contact_email)]
+        } else {
+            vec![]
+        };
+
         // Prepare making a call to newAccount. This is fine to do both for
         // new keys and existing. For existing the spec says to return a 200
         // with the Location header set to the key id (kid).
         let acc = ApiAccount {
-            contact: vec![format!("mailto:{}", contact_email)],
+            contact,
             termsOfServiceAgreed: Some(true),
             ..Default::default()
         };
