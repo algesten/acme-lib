@@ -1,6 +1,6 @@
 use crate::api::ApiProblem;
 
-pub(crate) type ReqResult<T> = ::std::result::Result<T, ApiProblem>;
+pub(crate) type ReqResult<T> = std::result::Result<T, ApiProblem>;
 
 pub(crate) fn req_get(url: &str) -> ureq::Response {
     let mut req = ureq::get(url);
