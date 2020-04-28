@@ -3,15 +3,14 @@
 //! The persistence is a simple key-value store. The intention is to make it simple to implement
 //! other persistence mechanisms than the provided ones, such as against a databases.
 
-use std::collections::hash_map::DefaultHasher;
-use std::collections::hash_map::HashMap;
+use std::collections::hash_map::{DefaultHasher, HashMap};
 use std::fs;
 use std::hash::{Hash, Hasher};
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use crate::Result;
+use crate::{Error, Result};
 
 /// Kinds of [persistence keys](struct.PersistKey.html).
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
@@ -55,8 +54,8 @@ impl<'a> PersistKey<'a> {
     }
 }
 
-impl<'a> ::std::fmt::Display for PersistKey<'a> {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+impl<'a> std::fmt::Display for PersistKey<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
             "{}_{}_{}",
@@ -135,10 +134,9 @@ impl FilePersist {
 impl Persist for FilePersist {
     fn put(&self, key: &PersistKey, value: &[u8]) -> Result<()> {
         let f_name = file_name_of(&self.dir, &key);
-        let mut file = fs::File::create(f_name)?;
-        file.write_all(value)?;
-        Ok(())
+        fs::write(f_name, value).map_err(Error::from)
     }
+
     fn get(&self, key: &PersistKey) -> Result<Option<Vec<u8>>> {
         let f_name = file_name_of(&self.dir, &key);
         let ret = if let Ok(mut file) = fs::File::open(f_name) {
@@ -153,8 +151,7 @@ impl Persist for FilePersist {
 }
 
 fn file_name_of(dir: &PathBuf, key: &PersistKey) -> PathBuf {
-    let mut f_name = dir.clone();
-    f_name.push(key.to_string());
+    let mut f_name = dir.join(key.to_string());
     f_name.set_extension(key.kind.name());
     f_name
 }

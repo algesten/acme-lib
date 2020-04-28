@@ -57,8 +57,8 @@ impl ApiProblem {
     }
 }
 
-impl ::std::fmt::Display for ApiProblem {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+impl std::fmt::Display for ApiProblem {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         if let Some(detail) = &self.detail {
             write!(f, "{}: {}", self._type, detail)
         } else {

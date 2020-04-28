@@ -5,7 +5,7 @@ use std::io;
 use crate::api::ApiProblem;
 
 /// acme-lib result.
-pub type Result<T> = ::std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 /// acme-lib errors.
 #[derive(Debug)]
