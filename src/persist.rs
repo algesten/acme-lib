@@ -69,7 +69,7 @@ impl<'a> std::fmt::Display for PersistKey<'a> {
 /// Trait for a persistence implementation.
 ///
 /// Implementation must be clonable and thread safe (Send). This can easily be done by
-/// wrapping the implemetation an `Arc<Mutex<P>>`.
+/// wrapping the implementation an `Arc<Mutex<P>>`.
 pub trait Persist: Clone + Send {
     /// Store the given bytes under the given key.
     fn put(&self, key: &PersistKey, value: &[u8]) -> Result<()>;
@@ -77,6 +77,13 @@ pub trait Persist: Clone + Send {
     ///
     /// `None` if the value doesn't exist.
     fn get(&self, key: &PersistKey) -> Result<Option<Vec<u8>>>;
+
+    /// Return file path by key
+    ///
+    /// None if Persist is in memory
+    fn path(&self, _key: &PersistKey) -> Option<PathBuf> {
+        None
+    }
 }
 
 /// Memory implementation for dev/testing.
@@ -106,6 +113,7 @@ impl Persist for MemoryPersist {
         lock.insert(key.to_string(), value.to_owned());
         Ok(())
     }
+
     fn get(&self, key: &PersistKey) -> Result<Option<Vec<u8>>> {
         let lock = self.inner.lock().unwrap();
         Ok(lock.get(&key.to_string()).cloned())
@@ -133,12 +141,12 @@ impl FilePersist {
 
 impl Persist for FilePersist {
     fn put(&self, key: &PersistKey, value: &[u8]) -> Result<()> {
-        let f_name = file_name_of(&self.dir, &key);
+        let f_name = self.path(&key).unwrap();
         fs::write(f_name, value).map_err(Error::from)
     }
 
     fn get(&self, key: &PersistKey) -> Result<Option<Vec<u8>>> {
-        let f_name = file_name_of(&self.dir, &key);
+        let f_name = self.path(&key).unwrap();
         let ret = if let Ok(mut file) = fs::File::open(f_name) {
             let mut v = vec![];
             file.read_to_end(&mut v)?;
@@ -148,10 +156,11 @@ impl Persist for FilePersist {
         };
         Ok(ret)
     }
-}
 
-fn file_name_of(dir: &PathBuf, key: &PersistKey) -> PathBuf {
-    let mut f_name = dir.join(key.to_string());
-    f_name.set_extension(key.kind.name());
-    f_name
+    fn path(&self, key: &PersistKey) -> Option<PathBuf> {
+        let mut f_name = self.dir.join(key.to_string());
+        f_name.set_extension(key.kind.name());
+        debug_assert!(f_name.is_file());
+        Some(f_name)
+    }
 }

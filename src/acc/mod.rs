@@ -1,4 +1,5 @@
 //
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::api::{ApiAccount, ApiDirectory, ApiIdentifier, ApiOrder, ApiRevocation};
@@ -107,6 +108,35 @@ impl<P: Persist> Account<P> {
             (Some(k), Some(c)) => Some(Certificate::new(k, c)),
             _ => None,
         })
+    }
+
+    /// get primary key path on disk
+    ///
+    /// returns None if file does not exist
+    pub fn primary_key_path(&self, primary_name: &str) -> Option<PathBuf> {
+        // use contact email for primary name
+        let realm = &self.inner.contact_email;
+
+        let pk_key = PersistKey::new(realm, PersistKind::PrivateKey, primary_name);
+
+        self.inner
+            .persist
+            .path(&pk_key)
+            .and_then(|path| if path.is_file() { Some(path) } else { None })
+    }
+
+    /// get certificate path on disk
+    ///
+    /// returns None if file does not exist
+    pub fn cert_path(&self, primary_name: &str) -> Option<PathBuf> {
+        // use contact email for primary name
+        let realm = &self.inner.contact_email;
+
+        let pk_cert = PersistKey::new(realm, PersistKind::Certificate, primary_name);
+        self.inner
+            .persist
+            .path(&pk_cert)
+            .and_then(|path| if path.is_file() { Some(path) } else { None })
     }
 
     /// Create a new order to issue a certificate for this account.

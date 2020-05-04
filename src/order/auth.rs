@@ -227,6 +227,8 @@ impl<P: Persist, A> Challenge<P, A> {
     ///
     /// The user must first update the DNS record or HTTP web server depending
     /// on the type challenge being validated.
+    ///
+    /// NOTE: validate is blocking, it uses `std::thread::sleep(delay_millis)` to implement delay
     pub fn validate(self, delay_millis: u64) -> Result<()> {
         let url_chall = &self.api_challenge.url;
         let res = self.inner.transport.call(url_chall, &ApiEmptyObject)?;
