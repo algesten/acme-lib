@@ -83,10 +83,12 @@ pub struct Certificate {
 }
 
 impl Certificate {
-    pub(crate) fn new(private_key: String, certificate: String) -> Self {
+    /// Create Certificate from `String/&str` key and certificate
+    /// useful with manually read files from disk.
+    pub fn new(private_key: impl Into<String>, certificate: impl Into<String>) -> Self {
         Certificate {
-            private_key,
-            certificate,
+            private_key: private_key.into(),
+            certificate: certificate.into(),
         }
     }
 
@@ -152,5 +154,54 @@ mod test {
     fn test_parse_date() {
         let x = parse_date("May  3 07:40:15 2019 GMT");
         assert_eq!(time::strftime("%F %T", &x).unwrap(), "2019-05-03 07:40:15");
+    }
+
+    #[test]
+    fn test_certificate() {
+        let cert = r#"-----BEGIN CERTIFICATE-----
+MIIErDCCA5SgAwIBAgISBLUTDajPHTUNywURHiL+MlrdMA0GCSqGSIb3DQEBCwUA
+MEoxCzAJBgNVBAYTAlVTMRYwFAYDVQQKEw1MZXQncyBFbmNyeXB0MSMwIQYDVQQD
+ExpMZXQncyBFbmNyeXB0IEF1dGhvcml0eSBYMzAeFw0yMDA1MDQxMjQ1MTFaFw0y
+MDA4MDIxMjQ1MTFaMBwxGjAYBgNVBAMTEXRlc3Quc2FpbG1haWwueHl6MHYwEAYH
+KoZIzj0CAQYFK4EEACIDYgAElGHvhg6ONWA1q6oGjqe0p9PYnfOnWkMCVnMmVCTT
+M0R5GARvi8H8VvOlPBfx1QDcBX+AhVMy4Nuj1ltp9iYG7sItg1zBjdwpiEsSSTtN
+WyoxJhxI62FwlAwdsMhyzUDMo4ICZjCCAmIwDgYDVR0PAQH/BAQDAgeAMB0GA1Ud
+JQQWMBQGCCsGAQUFBwMBBggrBgEFBQcDAjAMBgNVHRMBAf8EAjAAMB0GA1UdDgQW
+BBQOLNwMgWbed1BncgXii6xYvdBQYzAfBgNVHSMEGDAWgBSoSmpjBH3duubRObem
+RWXv86jsoTBvBggrBgEFBQcBAQRjMGEwLgYIKwYBBQUHMAGGImh0dHA6Ly9vY3Nw
+LmludC14My5sZXRzZW5jcnlwdC5vcmcwLwYIKwYBBQUHMAKGI2h0dHA6Ly9jZXJ0
+LmludC14My5sZXRzZW5jcnlwdC5vcmcvMBwGA1UdEQQVMBOCEXRlc3Quc2FpbG1h
+aWwueHl6MEwGA1UdIARFMEMwCAYGZ4EMAQIBMDcGCysGAQQBgt8TAQEBMCgwJgYI
+KwYBBQUHAgEWGmh0dHA6Ly9jcHMubGV0c2VuY3J5cHQub3JnMIIBBAYKKwYBBAHW
+eQIEAgSB9QSB8gDwAHYAXqdz+d9WwOe1Nkh90EngMnqRmgyEoRIShBh1loFxRVgA
+AAFx3+726gAABAMARzBFAiBad5xUwYO6z1H96cT66zekWvZ88AUWXDi9PcLaNmbG
+CAIhAJE6YEEesDWwsm950tIHILq+jwjgX8Y2/xmMjqabNQR/AHYAsh4FzIuizYog
+Todm+Su5iiUgZ2va+nDnsklTLe+LkF4AAAFx3+723wAABAMARzBFAiEA1s70pTwu
+XuJMCj3O7t7VBlXJdaHE+VkxylVh29bG/xACIEwlg5N9vILOozr5fTORegUPQB+X
+WeeIpF/c7A/X4LGNMA0GCSqGSIb3DQEBCwUAA4IBAQAQHlp61BFOqxCzvmz/dNH7
+nQeLUEI/eWlvCEKJaFW9e+Dckpwt75JMVckhiN+Fc+CrJdKQHsDYWF1DEPuRPwuT
+u3fMx6LLNVw0vK7JQKr6lshanGbqJZYy8bjzs0rYlar/KCv9nu2wr1tMmKC3Kl5w
+gkmYR+2ZVxJ+rHz3yY9+5gOP5djAfI+nxfgfA0Yswewg5LzxM5F4HdR/4B95WHcv
+ZbfCgLTC51c1RSJO98Bd8HDOPH2oVGgA5TVtgWSe8gC49dZpiRnbodjlWzAJtHsR
+E2IZIC6mVugER+rDy7HGstVlhJdzRfEDcMLaiPf8QeyrEXRUPXpBLGhpncsyDwZh
+-----END CERTIFICATE-----
+"#;
+
+        let key = r#"-----BEGIN PRIVATE KEY-----
+MIG2AgEAMBAGByqGSM49AgEGBSuBBAAiBIGeMIGbAgEBBDCUR0x6Izf9hVuRmZxQ
+vXuKVPT9BR3aM9rYh5fh3nm6GAVRZ7dJt2Og8N3TAYCaYOehZANiAASUYe+GDo41
+YDWrqgaOp7Sn09id86daQwJWcyZUJNMzRHkYBG+LwfxW86U8F/HVANwFf4CFUzLg
+26PWW2n2Jgbuwi2DXMGN3CmISxJJO01bKjEmHEjrYXCUDB2wyHLNQMw=
+-----END PRIVATE KEY-----
+"#;
+
+        let certificate = Certificate::new(key, cert);
+
+        assert_eq!(certificate.private_key(), key);
+        assert_eq!(certificate.certificate(), cert);
+
+        // assert ssl DER conversion does not panic on valid data
+        assert_eq!(certificate.private_key_der().len(), 167);
+        assert_eq!(certificate.certificate_der().len(), 1200);
     }
 }
