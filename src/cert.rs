@@ -86,7 +86,7 @@ impl Certificate {
     /// Create Certificate from `String/&str` key and certificate
     /// useful with manually read files from disk.
     pub fn new(private_key: impl Into<String>, certificate: impl Into<String>) -> Self {
-        Certificate {
+        Self {
             private_key: private_key.into(),
             certificate: certificate.into(),
         }
