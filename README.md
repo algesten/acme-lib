@@ -1,13 +1,11 @@
-acme-lib
-========
+# acme-lib
 
-Simple rust library to access an ACME API (Automatic Certificate Management Environment)
-provider such as https://letsencrypt.org
+acme-lib is a library for accessing ACME (Automatic Certificate Management Environment)
+services such as [Let's Encrypt](https://letsencrypt.org/).
 
-  * Uses API version 2.0
-  * https://tools.ietf.org/html/draft-ietf-acme-acme-18
+Uses ACME v2 to issue/renew certificates.
 
-# Example
+## Example
 
 ```rust
 use acme_lib::{Error, Directory, DirectoryUrl};
@@ -86,14 +84,14 @@ let ord_csr = loop {
 // Ownership is proven. Create a private key for
 // the certificate. These are provided for convenience, you
 // can provide your own keypair instead if you want.
-let (pkey_pri, pkey_pub) = create_p384_key();
+let pkey_pri = create_p384_key();
 
 // Submit the CSR. This causes the ACME provider to enter a
 // state of "processing" that must be polled until the
 // certificate is either issued or rejected. Again we poll
 // for the status change.
 let ord_cert =
-    ord_csr.finalize_pkey(pkey_pri, pkey_pub, 5000)?;
+    ord_csr.finalize_pkey(pkey_pri, 5000)?;
 
 // Now download the certificate. Also stores the cert in
 // the persistence.
@@ -103,25 +101,54 @@ Ok(())
 }
 ```
 
+### Domain ownership
 
-## License (MIT)
+Most website TLS certificates tries to prove ownership/control over the domain they
+are issued for. For ACME, this means proving you control either a web server answering
+HTTP requests to the domain, or the DNS server answering name lookups against the domain.
 
-Copyright (c) 2019 Martin Algesten
+To use this library, there are points in the flow where you would need to modify either
+the web server or DNS server before progressing to get the certificate.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+See [`http_challenge`] and [`dns_challenge`].
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+#### Multiple domains
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+When creating a new order, it's possible to provide multiple alt-names that will also
+be part of the certificate. The ACME API requires you to prove ownership of each such
+domain. See [`authorizations`].
+
+[`http_challenge`]: order/struct.Auth.html#method.http_challenge
+[`dns_challenge`]: order/struct.Auth.html#method.dns_challenge
+[`authorizations`]: order/struct.NewOrder.html#method.authorizations
+
+### Rate limits
+
+The ACME API provider Let's Encrypt uses [rate limits] to ensure the API i not being
+abused. It might be tempting to put the `delay_millis` really low in some of this
+libraries' polling calls, but balance this against the real risk of having access
+cut off.
+
+[rate limits]: https://letsencrypt.org/docs/rate-limits/
+
+#### Use staging for dev!
+
+Especially take care to use the Let`s Encrypt staging environment for development
+where the rate limits are more relaxed.
+
+See [`DirectoryUrl::LetsEncryptStaging`].
+
+[`DirectoryUrl::LetsEncryptStaging`]: enum.DirectoryUrl.html#variant.LetsEncryptStaging
+
+### Implementation details
+
+The library tries to pull in as few dependencies as possible. (For now) that means using
+synchronous I/O and blocking cals. This doesn't rule out a futures based version later.
+
+It is written by following the
+[ACME draft spec 18](https://tools.ietf.org/html/draft-ietf-acme-acme-18), and relies
+heavily on the [openssl](https://docs.rs/openssl/) crate to make JWK/JWT and sign requests
+to the API.
+
+
+License: MIT
