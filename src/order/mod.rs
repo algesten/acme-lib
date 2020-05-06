@@ -283,6 +283,22 @@ pub struct CertOrder<P: Persist> {
 
 impl<P: Persist> CertOrder<P> {
     /// Request download of the issued certificate.
+    pub fn download_cert(self) -> Result<Certificate> {
+        //
+        let url = self.order.api_order.certificate.expect("certificate url");
+        let inner = self.order.inner;
+
+        let res = inner.transport.call(&url, &ApiEmptyString)?;
+
+        let pkey_pem_bytes = self.private_key.private_key_to_pem_pkcs8().expect("to_pem");
+        let pkey_pem = String::from_utf8_lossy(&pkey_pem_bytes);
+
+        let cert = res.into_string()?;
+
+        Ok(Certificate::new(pkey_pem.to_string(), cert))
+    }
+
+    /// Request download of the issued certificate.
     ///
     /// When downloaded, the certificate and key will be saved in the
     /// persistence. They can later be retreived using [`Account::certificate`].
@@ -293,7 +309,7 @@ impl<P: Persist> CertOrder<P> {
         let primary_name = self.order.api_order.domains()[0].to_string();
         let url = self.order.api_order.certificate.expect("certificate url");
         let inner = self.order.inner;
-        let realm = inner.contact_email.clone();
+        let realm = inner.contact_email.as_deref().unwrap_or(&"");
 
         let res = inner.transport.call(&url, &ApiEmptyString)?;
 

@@ -18,7 +18,7 @@ pub(crate) use self::akey::AcmeKey;
 pub(crate) struct AccountInner<P: Persist> {
     pub persist: P,
     pub transport: Transport,
-    pub contact_email: String,
+    pub contact_email: Option<String>,
     pub api_account: ApiAccount,
     pub api_directory: ApiDirectory,
 }
@@ -46,7 +46,7 @@ impl<P: Persist> Account<P> {
     pub(crate) fn new(
         persist: P,
         transport: Transport,
-        contact_email: &str,
+        contact_email: Option<&str>,
         api_account: ApiAccount,
         api_directory: ApiDirectory,
     ) -> Self {
@@ -54,7 +54,7 @@ impl<P: Persist> Account<P> {
             inner: Arc::new(AccountInner {
                 persist,
                 transport,
-                contact_email: contact_email.into(),
+                contact_email: contact_email.map(String::from),
                 api_account,
                 api_directory,
             }),
@@ -69,8 +69,8 @@ impl<P: Persist> Account<P> {
     }
 
     /// Contact email for this account.
-    pub fn contact_email(&self) -> &str {
-        &self.inner.contact_email
+    pub fn contact_email(&self) -> Option<&str> {
+        self.inner.contact_email.as_deref()
     }
 
     /// Get an already issued and [downloaded] certificate.
@@ -86,7 +86,7 @@ impl<P: Persist> Account<P> {
     /// [valid days left]: struct.Certificate.html#method.valid_days_left
     pub fn certificate(&self, primary_name: &str) -> Result<Option<Certificate>> {
         // details needed for persistence
-        let realm = &self.inner.contact_email;
+        let realm = self.inner.contact_email.as_deref().unwrap_or("");
         let persist = &self.inner.persist;
 
         // read primary key
