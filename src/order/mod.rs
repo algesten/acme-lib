@@ -175,8 +175,8 @@ impl<P: Persist> NewOrder<P> {
 ///
 /// To submit the CSR is called "finalizing" the order.
 ///
-/// To finalize, the user supplies a private key (from which a public key is derived). This 
-/// library provides [functions to create private keys], but the user can opt for creating them 
+/// To finalize, the user supplies a private key (from which a public key is derived). This
+/// library provides [functions to create private keys], but the user can opt for creating them
 /// in some other way.
 ///
 /// This library makes no attempt at validating which key algorithms are used. Unsupported
