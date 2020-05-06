@@ -45,7 +45,10 @@ impl<'a> PersistKey<'a> {
     /// Create a new key under a "realm", kind and key. The realm is an opaque hash
     /// of the given realm string.
     ///
-    /// The realm is currently defined as the account contact email, but this might change.
+    /// The realm is in normally defined as the account contact email, however it depends
+    /// on how the `Account` object is accessed, see [`account_with_realm`].
+    ///
+    /// [`account_with_realm`]: ../struct.Directory.html#method.account_with_realm
     pub fn new(realm: &str, kind: PersistKind, key: &'a str) -> Self {
         let mut h = DefaultHasher::new();
         realm.hash(&mut h);

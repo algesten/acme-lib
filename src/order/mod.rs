@@ -293,20 +293,20 @@ impl<P: Persist> CertOrder<P> {
         let primary_name = self.order.api_order.domains()[0].to_string();
         let url = self.order.api_order.certificate.expect("certificate url");
         let inner = self.order.inner;
-        let realm = inner.contact_email.clone();
+        let realm = &inner.realm[..];
 
         let res = inner.transport.call(&url, &ApiEmptyString)?;
 
         // save key and cert into persistence
         let persist = &inner.persist;
-        let pk_key = PersistKey::new(&realm, PersistKind::PrivateKey, &primary_name);
+        let pk_key = PersistKey::new(realm, PersistKind::PrivateKey, &primary_name);
         let pkey_pem_bytes = self.private_key.private_key_to_pem_pkcs8().expect("to_pem");
         let pkey_pem = String::from_utf8_lossy(&pkey_pem_bytes);
         debug!("Save private key: {}", pk_key);
         persist.put(&pk_key, &pkey_pem_bytes)?;
 
         let cert = res.into_string()?;
-        let pk_crt = PersistKey::new(&realm, PersistKind::Certificate, &primary_name);
+        let pk_crt = PersistKey::new(realm, PersistKind::Certificate, &primary_name);
         debug!("Save certificate: {}", pk_crt);
         persist.put(&pk_crt, cert.as_bytes())?;
 

@@ -67,13 +67,34 @@ impl<P: Persist> Directory<P> {
     ///
     /// Either way the `newAccount` API endpoint is called and thereby ensures the
     /// account is active and working.
+    ///
+    /// This is the same as calling
+    /// `account_with_realm(contact_email, ["mailto: <contact_email>"]`)
     pub fn account(&self, contact_email: &str) -> Result<Account<P>> {
+        // Contact email is the persistence realm when using this method.
+        let contact = vec![format!("mailto:{}", contact_email)];
+        self.account_with_realm(contact_email, contact)
+    }
+
+    /// Access an account using a lower level method. The contact is optional
+    /// against the ACME API provider and there might be situations where you
+    /// either don't need it at all, or need it to be something else than
+    /// an email address.
+    ///
+    /// The `realm` parameter is a persistence realm, i.e. a namespace in the
+    /// persistence where all values belonging to this Account will be stored.
+    ///
+    /// If a persisted private key exists for the `realm`, it will be read
+    /// and used for further access. This way we reuse the same ACME API account.
+    ///
+    /// If one doesn't exist, it is created and the corresponding public key is
+    /// uploaded to the ACME API thus creating the account.
+    ///
+    /// Either way the `newAccount` API endpoint is called and thereby ensures the
+    /// account is active and working.
+    pub fn account_with_realm(&self, realm: &str, contact: Vec<String>) -> Result<Account<P>> {
         // key in persistence for acme account private key
-        let pem_key = PersistKey::new(
-            &contact_email,
-            PersistKind::AccountPrivateKey,
-            "acme_account",
-        );
+        let pem_key = PersistKey::new(realm, PersistKind::AccountPrivateKey, "acme_account");
 
         // Get the key from a saved PEM, or from creating a new
         let mut is_new = false;
@@ -93,7 +114,7 @@ impl<P: Persist> Directory<P> {
         // new keys and existing. For existing the spec says to return a 200
         // with the Location header set to the key id (kid).
         let acc = ApiAccount {
-            contact: vec![format!("mailto:{}", contact_email)],
+            contact,
             termsOfServiceAgreed: Some(true),
             ..Default::default()
         };
@@ -118,7 +139,7 @@ impl<P: Persist> Directory<P> {
         Ok(Account::new(
             self.persist.clone(),
             transport,
-            contact_email,
+            realm,
             api_account,
             self.api_directory.clone(),
         ))
