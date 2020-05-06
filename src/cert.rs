@@ -84,7 +84,9 @@ pub struct Certificate {
 
 impl Certificate {
     /// Create Certificate from `String/&str` key and certificate
-    /// useful with manually read files from disk.
+    /// useful when reading files manually from disk.
+    ///
+    /// NOTE: keys and certs should be PEM encoded
     pub fn new(private_key: impl Into<String>, certificate: impl Into<String>) -> Self {
         Self {
             private_key: private_key.into(),
