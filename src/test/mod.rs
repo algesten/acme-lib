@@ -7,7 +7,7 @@ use std::net::TcpListener;
 use std::thread;
 
 lazy_static! {
-    static ref RE_URL: regex::Regex = { regex::Regex::new("<URL>").unwrap() };
+    static ref RE_URL: regex::Regex = regex::Regex::new("<URL>").unwrap();
 }
 
 pub struct TestServer {
