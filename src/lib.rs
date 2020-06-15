@@ -117,9 +117,9 @@
 //! be part of the certificate. The ACME API requires you to prove ownership of each such
 //! domain. See [`authorizations`].
 //!
-//! [`http_challenge`]: order/struct.Auth.html#method.http_challenge
-//! [`dns_challenge`]: order/struct.Auth.html#method.dns_challenge
-//! [`authorizations`]: order/struct.NewOrder.html#method.authorizations
+//! [`http_challenge`]: https://docs.rs/acme-lib/latest/acme_lib/order/struct.Auth.html#method.http_challenge
+//! [`dns_challenge`]: https://docs.rs/acme-lib/latest/acme_lib/order/struct.Auth.html#method.dns_challenge
+//! [`authorizations`]: https://docs.rs/acme-lib/latest/acme_lib/order/struct.NewOrder.html#method.authorizations
 //!
 //! ## Rate limits
 //!
