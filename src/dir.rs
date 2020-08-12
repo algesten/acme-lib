@@ -43,17 +43,47 @@ pub struct Directory<P: Persist> {
     api_directory: ApiDirectory,
 }
 
+/// Just a simple struct allowing configure of proxies for now
+/// (basically to avoid leaking reqwest types into acme-lib user dependencies)
+pub struct ClientConfig {
+    https_proxy: Option<String>
+}
+
+impl ClientConfig {
+    pub fn default() -> ClientConfig {
+        ClientConfig {
+            https_proxy: None
+        }
+    }
+    pub fn with_proxy(proxy: String) -> ClientConfig {
+        ClientConfig {
+            https_proxy: Some(proxy)
+        }
+    }
+}
+
 impl<P: Persist> Directory<P> {
     /// Create a directory over a persistence implementation and directory url.
     pub fn from_url(persist: P, url: DirectoryUrl) -> Result<Directory<P>> {
+        Directory::from_url_with_config(persist, url, &ClientConfig::default())
+    }
+
+    pub fn from_url_with_config(persist: P, url: DirectoryUrl, client_config: &ClientConfig) -> Result<Directory<P>> {
+        let builder = reqwest::ClientBuilder::new();
+        let client = match &client_config.https_proxy {
+                                Some(proxy) => reqwest::Proxy::https(proxy)
+                                    .and_then(|p| builder.proxy(p).build()),
+                                None => Ok(reqwest::Client::new())
+        }.or_else(|_| Err("failed to setup proxy for client"))?;
+
         let dir_url = url.to_url();
-        let res = req_handle_error(req_get(&dir_url))?;
-        let api_directory: ApiDirectory = read_json(res)?;
-        let nonce_pool = Arc::new(NoncePool::new(&api_directory.newNonce));
+        let mut res = req_handle_error(req_get(&client,&dir_url))?;
+        let api_directory: ApiDirectory = read_json(&mut res)?;
+        let nonce_pool = Arc::new(NoncePool::new(client, &api_directory.newNonce));
         Ok(Directory {
             persist,
             nonce_pool,
-            api_directory,
+            api_directory
         })
     }
 
@@ -120,10 +150,10 @@ impl<P: Persist> Directory<P> {
         };
 
         let mut transport = Transport::new(&self.nonce_pool, acme_key);
-        let res = transport.call_jwk(&self.api_directory.newAccount, &acc)?;
+        let mut res = transport.call_jwk(&self.api_directory.newAccount, &acc)?;
         let kid = req_expect_header(&res, "location")?;
         debug!("Key id is: {}", kid);
-        let api_account: ApiAccount = read_json(res)?;
+        let api_account: ApiAccount = read_json(&mut res)?;
 
         // fill in the server returned key id
         transport.set_key_id(kid);
