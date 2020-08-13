@@ -44,7 +44,7 @@ pub struct ApiProblem {
 
 impl ApiProblem {
     pub fn is_bad_nonce(&self) -> bool {
-        self._type == "badNonce"
+        self._type == "badNonce" || self._type == "urn:ietf:params:acme:error:badNonce"
     }
     pub fn is_jwt_verification_error(&self) -> bool {
         (self._type == "urn:acme:error:malformed"

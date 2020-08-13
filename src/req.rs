@@ -33,9 +33,40 @@ fn req_configure(req: &mut ureq::Request) {
 }
 */
 
-pub(crate) fn req_handle_error(res: reqwest::Result<reqwest::Response>) -> ReqResult<reqwest::Response> {
-    match res {
-        Ok(res) => Ok(res),
+pub(crate) fn req_handle_error(rt: reqwest::Result<reqwest::Response>) -> ReqResult<reqwest::Response> {
+    match rt {
+        Ok(mut res) => match res.error_for_status_ref() {
+            // ok responses pass through
+            Ok(_) => Ok(res),
+            Err(_err) => {
+                let problem = if res.headers()[reqwest::header::CONTENT_TYPE] == "application/problem+json" {
+                    // if we were sent a problem+json, deserialize it
+                    let body = req_safe_read_body(&mut res);
+                    serde_json::from_str(&body).unwrap_or_else(|e| ApiProblem {
+                        _type: "problemJsonFail".into(),
+                        detail: Some(format!(
+                            "Failed to deserialize application/problem+json ({}) body: {}",
+                            e.to_string(),
+                            body)),
+                        subproblems: None,
+                    })
+                } else {
+                    // some other problem
+                    let status_code = res.status();
+                    let status_reason = status_code.canonical_reason().unwrap_or("Unknown status code");
+                    let status = format!("{} {}", status_code, status_reason);
+                    let body = req_safe_read_body(&mut res);
+                    let detail = format!("{} body: {}", status, body);
+                    ApiProblem {
+                        _type: "httpReqError".into(),
+                        detail: Some(detail),
+                        subproblems: None,
+                    }
+                };
+
+                Err(problem)
+            }
+        }
         Err(err) => Err(ApiProblem{
             _type: "reqwest".to_string(),
             detail: Some(err.to_string()),
