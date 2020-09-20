@@ -6,9 +6,11 @@
 use std::collections::hash_map::{DefaultHasher, HashMap};
 use std::fs;
 use std::hash::{Hash, Hasher};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 use crate::{Error, Result};
 
@@ -135,9 +137,25 @@ impl FilePersist {
 }
 
 impl Persist for FilePersist {
+    #[cfg(not(unix))]
     fn put(&self, key: &PersistKey, value: &[u8]) -> Result<()> {
         let f_name = file_name_of(&self.dir, &key);
         fs::write(f_name, value).map_err(Error::from)
+    }
+
+    #[cfg(unix)]
+    fn put(&self, key: &PersistKey, value: &[u8]) -> Result<()> {
+        let f_name = file_name_of(&self.dir, &key);
+        match key.kind {
+            PersistKind::AccountPrivateKey | PersistKind::PrivateKey => {
+                let mut f = fs::File::create(f_name)?;
+                let mut permissions = f.metadata()?.permissions();
+                permissions.set_mode(0o600);
+                f.set_permissions(permissions)?;
+                f.write_all(value).map_err(Error::from)
+            },
+            PersistKind::Certificate => fs::write(f_name, value).map_err(Error::from),
+        }
     }
 
     fn get(&self, key: &PersistKey) -> Result<Option<Vec<u8>>> {
