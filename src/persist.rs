@@ -10,7 +10,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 #[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::OpenOptionsExt;
 
 use crate::{Error, Result};
 
@@ -147,13 +147,15 @@ impl Persist for FilePersist {
     fn put(&self, key: &PersistKey, value: &[u8]) -> Result<()> {
         let f_name = file_name_of(&self.dir, &key);
         match key.kind {
-            PersistKind::AccountPrivateKey | PersistKind::PrivateKey => {
-                let mut f = fs::File::create(f_name)?;
-                let mut permissions = f.metadata()?.permissions();
-                permissions.set_mode(0o600);
-                f.set_permissions(permissions)?;
-                f.write_all(value).map_err(Error::from)
-            },
+            PersistKind::AccountPrivateKey | PersistKind::PrivateKey =>
+                fs::OpenOptions::new()
+                 .mode(0o600)
+                 .write(true)
+                 .truncate(true)
+                 .create(true)
+                 .open(f_name)?
+                 .write_all(value)
+                 .map_err(Error::from),
             PersistKind::Certificate => fs::write(f_name, value).map_err(Error::from),
         }
     }
