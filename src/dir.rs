@@ -26,7 +26,7 @@ pub enum DirectoryUrl<'a> {
 }
 
 impl<'a> DirectoryUrl<'a> {
-    fn to_url(&self) -> &str {
+    pub fn to_url(&self) -> &str {
         match self {
             DirectoryUrl::LetsEncrypt => LETSENCRYPT,
             DirectoryUrl::LetsEncryptStaging => LETSENCRYPT_STAGING,
