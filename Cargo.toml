@@ -11,7 +11,7 @@ categories = ["web-programming", "api-bindings"]
 edition = "2018"
 
 [dependencies]
-base64 = "0.12"
+base64 = "0.13"
 lazy_static = "1"
 log = "0.4"
 openssl = "0.10"
