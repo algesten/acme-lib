@@ -139,7 +139,7 @@ impl<P: Persist> Account<P> {
         }?;
         let api_order: ApiOrder = read_json(&mut res)?;
 
-        let order = Order::new(&self.inner, api_order, order_url);
+        let order = Order::new(&self.inner, api_order, order_url, primary_name.to_string());
         Ok(NewOrder { order })
     }
 
