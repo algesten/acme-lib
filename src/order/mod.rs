@@ -38,14 +38,16 @@ pub(crate) struct Order<P: Persist> {
     inner: Arc<AccountInner<P>>,
     api_order: ApiOrder,
     url: String,
+    primary_name: String,
 }
 
 impl<P: Persist> Order<P> {
-    pub(crate) fn new(inner: &Arc<AccountInner<P>>, api_order: ApiOrder, url: String) -> Self {
+    pub(crate) fn new(inner: &Arc<AccountInner<P>>, api_order: ApiOrder, url: String, primary_name: String) -> Self {
         Order {
             inner: inner.clone(),
             api_order,
             url,
+            primary_name,
         }
     }
 }
@@ -54,6 +56,7 @@ impl<P: Persist> Order<P> {
 pub(crate) fn refresh_order<P: Persist>(
     inner: &Arc<AccountInner<P>>,
     url: String,
+    primary_name: String,
     want_status: &'static str,
 ) -> Result<Order<P>> {
     let mut res = inner.transport.call(&url, &ApiEmptyString)?;
@@ -66,6 +69,7 @@ pub(crate) fn refresh_order<P: Persist>(
         inner: inner.clone(),
         api_order,
         url,
+        primary_name,
     })
 }
 
@@ -131,6 +135,7 @@ impl<P: Persist> NewOrder<P> {
                     &self.order.inner,
                     self.order.api_order.clone(),
                     self.order.url.clone(),
+                    self.order.primary_name.clone(),
                 ),
             })
         } else {
@@ -142,7 +147,7 @@ impl<P: Persist> NewOrder<P> {
     ///
     /// The specification calls this a "POST-as-GET" against the order URL.
     pub fn refresh(&mut self) -> Result<()> {
-        let order = refresh_order(&self.order.inner, self.order.url.clone(), "ready")?;
+        let order = refresh_order(&self.order.inner, self.order.url.clone(), self.order.primary_name.clone(), "ready")?;
         self.order = order;
         Ok(())
     }
@@ -223,16 +228,19 @@ impl<P: Persist> CsrOrder<P> {
         private_key: PKey<pkey::Private>,
         delay_millis: u64,
     ) -> Result<CertOrder<P>> {
-        //
+        // the primary name for the cert
+        let primary_name = &self.order.primary_name;
+
         // the domains that we have authorized
         let domains = self.order.api_order.domains();
 
         // csr from private key and authorized domains.
-        let csr = create_csr(&private_key, &domains)?;
+        let csr = create_csr(&private_key, primary_name, &domains)?;
 
         // this is not the same as PEM.
         let csr_der = csr.to_der().expect("to_der()");
         let csr_enc = base64url(&csr_der);
+
         let finalize = ApiFinalize { csr: csr_enc };
 
         let inner = self.order.inner;
@@ -246,7 +254,7 @@ impl<P: Persist> CsrOrder<P> {
         // wait for the status to not be processing.
         // valid -> cert is issued
         // invalid -> the whole thing is off
-        let order = wait_for_order_status(&inner, &order_url, delay_millis)?;
+        let order = wait_for_order_status(&inner, &order_url, &primary_name, delay_millis)?;
 
         if !order.api_order.is_status_valid() {
             return Err(format!("Order is in status: {:?}", order.api_order.status).into());
@@ -264,10 +272,11 @@ impl<P: Persist> CsrOrder<P> {
 fn wait_for_order_status<P: Persist>(
     inner: &Arc<AccountInner<P>>,
     url: &str,
+    primary_name: &str,
     delay_millis: u64,
 ) -> Result<Order<P>> {
     loop {
-        let order = refresh_order(inner, url.to_string(), "valid")?;
+        let order = refresh_order(inner, url.to_string(), primary_name.to_string(), "valid")?;
         if !order.api_order.is_status_processing() {
             return Ok(order);
         }

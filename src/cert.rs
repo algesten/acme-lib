@@ -6,7 +6,7 @@ use openssl::pkey::{self, PKey};
 use openssl::rsa::Rsa;
 use openssl::stack::Stack;
 use openssl::x509::extension::SubjectAlternativeName;
-use openssl::x509::{X509Req, X509ReqBuilder, X509};
+use openssl::x509::{X509Req, X509ReqBuilder, X509, X509NameBuilder};
 
 use crate::Result;
 
@@ -43,13 +43,18 @@ pub fn create_p384_key() -> PKey<pkey::Private> {
     PKey::from_ec_key(pri_key_ec).expect("from_ec_key")
 }
 
-pub(crate) fn create_csr(pkey: &PKey<pkey::Private>, domains: &[&str]) -> Result<X509Req> {
+pub(crate) fn create_csr(pkey: &PKey<pkey::Private>, primary_name: &str, domains: &[&str]) -> Result<X509Req> {
     //
     // the csr builder
     let mut req_bld = X509ReqBuilder::new().expect("X509ReqBuilder");
 
     // set private/public key in builder
     req_bld.set_pubkey(&pkey).expect("set_pubkey");
+
+    // set CN
+    let mut name_builder = X509NameBuilder::new().expect("X509NameBuilder");
+    name_builder.append_entry_by_text("CN", primary_name).expect("X509NameBuilder::append_entry_by_text");
+    req_bld.set_subject_name(&name_builder.build()).expect("set_subject_name");
 
     // set all domains as alt names
     let mut stack = Stack::new().expect("Stack::new");
