@@ -13,7 +13,7 @@
 //!
 //! fn request_cert() -> Result<(), Error> {
 //!
-//! // Use DirectoryUrl::LetsEncrypStaging for dev/testing.
+//! // Use DirectoryUrl::LetsEncryptStaging for dev/testing.
 //! let url = DirectoryUrl::LetsEncrypt;
 //!
 //! // Save/load keys and certificates to current dir.
