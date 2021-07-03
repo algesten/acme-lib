@@ -142,7 +142,7 @@
 //! ## Implementation details
 //!
 //! The library tries to pull in as few dependencies as possible. (For now) that means using
-//! synchronous I/O and blocking cals. This doesn't rule out a futures based version later.
+//! synchronous I/O and blocking calls. This doesn't rule out a futures based version later.
 //!
 //! It is written by following the
 //! [ACME draft spec 18](https://tools.ietf.org/html/draft-ietf-acme-acme-18), and relies
