@@ -47,7 +47,7 @@ impl<P: Persist> Directory<P> {
     /// Create a directory over a persistence implementation and directory url.
     pub fn from_url(persist: P, url: DirectoryUrl) -> Result<Directory<P>> {
         let dir_url = url.to_url();
-        let res = req_handle_error(req_get(&dir_url))?;
+        let res = req_handle_error(req_get(dir_url))?;
         let api_directory: ApiDirectory = read_json(res)?;
         let nonce_pool = Arc::new(NoncePool::new(&api_directory.newNonce));
         Ok(Directory {

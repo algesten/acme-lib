@@ -145,7 +145,7 @@ impl Persist for FilePersist {
 
     #[cfg(unix)]
     fn put(&self, key: &PersistKey, value: &[u8]) -> Result<()> {
-        let f_name = file_name_of(&self.dir, &key);
+        let f_name = file_name_of(&self.dir, key);
         match key.kind {
             PersistKind::AccountPrivateKey | PersistKind::PrivateKey =>
                 fs::OpenOptions::new()
@@ -161,7 +161,7 @@ impl Persist for FilePersist {
     }
 
     fn get(&self, key: &PersistKey) -> Result<Option<Vec<u8>>> {
-        let f_name = file_name_of(&self.dir, &key);
+        let f_name = file_name_of(&self.dir, key);
         let ret = if let Ok(mut file) = fs::File::open(f_name) {
             let mut v = vec![];
             file.read_to_end(&mut v)?;
@@ -173,7 +173,7 @@ impl Persist for FilePersist {
     }
 }
 
-fn file_name_of(dir: &PathBuf, key: &PersistKey) -> PathBuf {
+fn file_name_of(dir: &Path, key: &PersistKey) -> PathBuf {
     let mut f_name = dir.join(key.to_string());
     f_name.set_extension(key.kind.name());
     f_name

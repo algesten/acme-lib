@@ -239,7 +239,7 @@ impl<P: Persist, A> Challenge<P, A> {
                 .challenges
                 .iter()
                 .filter_map(|c| c.error.as_ref())
-                .nth(0);
+                .next();
             let reason = if let Some(error) = error {
                 format!(
                     "Failed: {}",
