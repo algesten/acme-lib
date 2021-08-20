@@ -13,7 +13,7 @@
 //!
 //! fn request_cert() -> Result<(), Error> {
 //!
-//! // Use DirectoryUrl::LetsEncrypStaging for dev/testing.
+//! // Use DirectoryUrl::LetsEncryptStaging for dev/testing.
 //! let url = DirectoryUrl::LetsEncrypt;
 //!
 //! // Save/load keys and certificates to current dir.
@@ -66,8 +66,8 @@
 //!     // the file/contents in the correct place.
 //!     // update_my_web_server(&path, &proof);
 //!
-//!     // After the file is accessible from the web, the calls
-//!     // this to tell the ACME API to start checking the
+//!     // After the file is accessible from the web,
+//!     // this tells the ACME API to start checking the
 //!     // existence of the proof.
 //!     //
 //!     // The order at ACME will change status to either
