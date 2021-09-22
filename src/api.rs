@@ -119,6 +119,7 @@ impl ApiDirectoryMeta {
 pub struct ApiAccount {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    #[serde(default)]
     pub contact: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub termsOfServiceAgreed: Option<bool>,
