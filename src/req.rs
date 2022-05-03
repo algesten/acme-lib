@@ -2,39 +2,43 @@ use crate::api::ApiProblem;
 
 pub(crate) type ReqResult<T> = std::result::Result<T, ApiProblem>;
 
-pub(crate) fn req_get(url: &str) -> ureq::Response {
-    let mut req = ureq::get(url);
-    req_configure(&mut req);
+const TIMEOUT_DURATION: std::time::Duration = std::time::Duration::from_secs(30);
+
+pub(crate) fn req_get(url: &str) -> Result<ureq::Response, ureq::Error> {
+    let req = ureq::get(url).timeout(TIMEOUT_DURATION);
     trace!("{:?}", req);
     req.call()
 }
 
-pub(crate) fn req_head(url: &str) -> ureq::Response {
-    let mut req = ureq::head(url);
-    req_configure(&mut req);
+pub(crate) fn req_head(url: &str) -> Result<ureq::Response, ureq::Error> {
+    let req = ureq::head(url).timeout(TIMEOUT_DURATION);
     trace!("{:?}", req);
     req.call()
 }
 
-pub(crate) fn req_post(url: &str, body: &str) -> ureq::Response {
-    let mut req = ureq::post(url);
-    req.set("content-type", "application/jose+json");
-    req_configure(&mut req);
+pub(crate) fn req_post(url: &str, body: &str) -> Result<ureq::Response, ureq::Error> {
+    let req = ureq::post(url)
+        .set("content-type", "application/jose+json")
+        .timeout(TIMEOUT_DURATION);
     trace!("{:?} {}", req, body);
     req.send_string(body)
 }
 
-fn req_configure(req: &mut ureq::Request) {
-    req.timeout_connect(30_000);
-    req.timeout_read(30_000);
-    req.timeout_write(30_000);
-}
-
-pub(crate) fn req_handle_error(res: ureq::Response) -> ReqResult<ureq::Response> {
-    // ok responses pass through
-    if res.ok() {
-        return Ok(res);
-    }
+pub(crate) fn req_handle_error(
+    res: Result<ureq::Response, ureq::Error>,
+) -> ReqResult<ureq::Response> {
+    let res = match res {
+        // ok responses pass through
+        Ok(res) => return Ok(res),
+        Err(ureq::Error::Status(_, res)) => res,
+        Err(ureq::Error::Transport(_)) => {
+            return Err(ApiProblem {
+                _type: "httpReqError".into(),
+                detail: Some("Transport error".into()),
+                subproblems: None,
+            })
+        }
+    };
 
     let problem = if res.content_type() == "application/problem+json" {
         // if we were sent a problem+json, deserialize it
