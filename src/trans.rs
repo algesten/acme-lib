@@ -112,7 +112,13 @@ impl NoncePool {
         }
     }
 
-    fn extract_nonce(&self, res: &ureq::Response) {
+    fn extract_nonce(&self, res: &std::result::Result<ureq::Response, ureq::Error>) {
+        let res = match res {
+            Ok(res) => res,
+            Err(ureq::Error::Status(_, res)) => res,
+            Err(ureq::Error::Transport(_)) => return,
+        };
+
         if let Some(nonce) = res.header("replay-nonce") {
             trace!("Extract nonce");
             let mut pool = self.pool.lock().unwrap();
@@ -133,6 +139,19 @@ impl NoncePool {
         }
         debug!("Request new nonce");
         let res = req_head(&self.nonce_url);
+
+        let res = match res {
+            Ok(res) => res,
+            Err(ureq::Error::Status(_, res)) => res,
+            Err(ureq::Error::Transport(_)) => {
+                return Err(crate::Error::ApiProblem(crate::api::ApiProblem {
+                    _type: "httpReqError".into(),
+                    detail: Some("Transport error".into()),
+                    subproblems: None,
+                }))
+            }
+        };
+
         Ok(req_expect_header(&res, "replay-nonce")?)
     }
 }

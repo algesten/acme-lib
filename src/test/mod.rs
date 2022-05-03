@@ -212,5 +212,5 @@ pub fn with_directory_server() -> TestServer {
 pub fn test_make_directory() {
     let server = with_directory_server();
     let res = ureq::get(&server.dir_url).call();
-    assert!(res.ok());
+    assert!(res.is_ok());
 }
