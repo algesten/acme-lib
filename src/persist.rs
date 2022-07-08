@@ -173,7 +173,7 @@ impl Persist for FilePersist {
 }
 
 fn file_name_of(dir: &Path, key: &PersistKey) -> PathBuf {
-    let mut f_name = dir.join(key.to_string());
+    let mut f_name = dir.join(key.to_string().to_lowercase());
     f_name.set_extension(key.kind.name());
     f_name
 }
