@@ -2,10 +2,12 @@
 use std::sync::Arc;
 
 use crate::api::{ApiAccount, ApiDirectory, ApiIdentifier, ApiOrder, ApiRevocation};
-use crate::cert::Certificate;
+use crate::crypto::{Certificate, Crypto, PKey};
+use crate::jwt::Jwk;
 use crate::order::{NewOrder, Order};
 use crate::persist::{Persist, PersistKey, PersistKind};
-use crate::req::req_expect_header;
+use crate::req::HttpClient;
+use crate::req::HttpResponse;
 use crate::trans::Transport;
 use crate::util::{base64url, read_json};
 use crate::Result;
@@ -15,9 +17,9 @@ mod akey;
 pub(crate) use self::akey::AcmeKey;
 
 #[derive(Clone, Debug)]
-pub(crate) struct AccountInner<P: Persist> {
+pub(crate) struct AccountInner<P: Persist, H: HttpClient, C: Crypto> where for <'a> &'a C::AccountKey: Into<Jwk> {
     pub persist: P,
-    pub transport: Transport,
+    pub transport: Transport<H, C>,
     pub realm: String,
     pub api_account: ApiAccount,
     pub api_directory: ApiDirectory,
@@ -38,14 +40,14 @@ pub(crate) struct AccountInner<P: Persist> {
 ///
 /// [`Directory::account`]: struct.Directory.html#method.account
 #[derive(Clone)]
-pub struct Account<P: Persist> {
-    inner: Arc<AccountInner<P>>,
+pub struct Account<P: Persist, H: HttpClient, C: Crypto> where for <'a> &'a C::AccountKey: Into<Jwk> {
+    inner: Arc<AccountInner<P, H, C>>,
 }
 
-impl<P: Persist> Account<P> {
+impl<P: Persist, H: HttpClient, C: Crypto> Account<P, H, C> where for <'a> &'a C::AccountKey: Into<Jwk> {
     pub(crate) fn new(
         persist: P,
-        transport: Transport,
+        transport: Transport<H, C>,
         realm: &str,
         api_account: ApiAccount,
         api_directory: ApiDirectory,
@@ -65,7 +67,7 @@ impl<P: Persist> Account<P> {
     ///
     /// The key is an elliptic curve private key.
     pub fn acme_private_key_pem(&self) -> String {
-        String::from_utf8(self.inner.transport.acme_key().to_pem()).expect("from_utf8")
+        self.inner.transport.acme_key().to_pem()
     }
 
     /// Get an already issued and [downloaded] certificate.
@@ -79,7 +81,7 @@ impl<P: Persist> Account<P> {
     ///
     /// [downloaded]: order/struct.CertOrder.html#method.download_and_save_cert
     /// [valid days left]: struct.Certificate.html#method.valid_days_left
-    pub fn certificate(&self, primary_name: &str) -> Result<Option<Certificate>> {
+    pub fn certificate(&self, primary_name: &str) -> Result<Option<(C::PrivateKey, C::Certificate)>> {
         // details needed for persistence
         let realm = &self.inner.realm;
         let persist = &self.inner.persist;
@@ -99,7 +101,11 @@ impl<P: Persist> Account<P> {
             .and_then(|s| String::from_utf8(s).ok());
 
         Ok(match (private_key, certificate) {
-            (Some(k), Some(c)) => Some(Certificate::new(k, c)),
+            (Some(k), Some(c)) => {
+                let pkey = C::PrivateKey::from_pem(&k).map_err(|e| e.into())?;
+                let cert = C::Certificate::from_pem(&c).map_err(|e| e.into())?;
+                Some((pkey, cert))
+            },
             _ => None,
         })
     }
@@ -116,7 +122,7 @@ impl<P: Persist> Account<P> {
     /// names supplied are exactly the same.
     ///
     /// [100 names]: https://letsencrypt.org/docs/rate-limits/
-    pub fn new_order(&self, primary_name: &str, alt_names: &[&str]) -> Result<NewOrder<P>> {
+    pub fn new_order(&self, primary_name: &str, alt_names: &[&str]) -> Result<NewOrder<P, H, C>> where for <'a> &'a C::AccountKey: Into<Jwk> {
         // construct the identifiers
         let prim_arr = [primary_name];
         let domains = prim_arr.iter().chain(alt_names);
@@ -133,10 +139,10 @@ impl<P: Persist> Account<P> {
         let new_order_url = &self.inner.api_directory.newOrder;
 
         let res = self.inner.transport.call(new_order_url, &order)?;
-        let order_url = req_expect_header(&res, "location")?;
+        let order_url = res.header("location")?.to_string();
         let api_order: ApiOrder = read_json(res)?;
 
-        let order = Order::new(&self.inner, api_order, order_url);
+        let order = Order::new(&self.inner, api_order, order_url.to_string());
         Ok(NewOrder { order })
     }
 
@@ -146,9 +152,9 @@ impl<P: Persist> Account<P> {
     /// certs, the revoked certificate will still be available using [`certificate`].
     ///
     /// [`certificate`]: struct.Account.html#method.certificate
-    pub fn revoke_certificate(&self, cert: &Certificate, reason: RevocationReason) -> Result<()> {
+    pub fn revoke_certificate(&self, cert: &C::Certificate, reason: RevocationReason) -> Result<()> {
         // convert to base64url of the DER (which is not PEM).
-        let certificate = base64url(&cert.certificate_der());
+        let certificate = base64url(&cert.to_der().map_err(|e| e.into())?);
 
         let revoc = ApiRevocation {
             certificate,
