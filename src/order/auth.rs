@@ -9,6 +9,7 @@ use crate::acc::AcmeKey;
 use crate::api::{ApiAuth, ApiChallenge, ApiEmptyObject, ApiEmptyString};
 use crate::jwt::*;
 use crate::persist::Persist;
+use crate::req::{HttpClient};
 use crate::util::{base64url, read_json};
 use crate::Result;
 
@@ -29,14 +30,14 @@ use crate::Result;
 /// [HTTP]: #method.http_challenge
 /// [DNS]: #method.dns_challenge
 #[derive(Debug)]
-pub struct Auth<P: Persist> {
-    inner: Arc<AccountInner<P>>,
+pub struct Auth<P: Persist, H: HttpClient> {
+    inner: Arc<AccountInner<P, H>>,
     api_auth: ApiAuth,
     auth_url: String,
 }
 
-impl<P: Persist> Auth<P> {
-    pub(crate) fn new(inner: &Arc<AccountInner<P>>, api_auth: ApiAuth, auth_url: &str) -> Self {
+impl<P: Persist, H: HttpClient> Auth<P, H> {
+    pub(crate) fn new(inner: &Arc<AccountInner<P, H>>, api_auth: ApiAuth, auth_url: &str) -> Self {
         Auth {
             inner: inner.clone(),
             api_auth,
@@ -72,7 +73,7 @@ impl<P: Persist> Auth<P> {
     /// use std::fs::File;
     /// use std::io::Write;
     ///
-    /// fn web_authorize<P: Persist>(auth: &Auth<P>) -> Result<(), Error> {
+    /// fn web_authorize<P: Persist, H: HttpClient>(auth: &Auth<P, H>) -> Result<(), Error> {
     ///   let challenge = auth.http_challenge();
     ///   // Assuming our web server's root is under /var/www
     ///   let path = {
@@ -85,7 +86,7 @@ impl<P: Persist> Auth<P> {
     ///   Ok(())
     /// }
     /// ```
-    pub fn http_challenge(&self) -> Challenge<P, Http> {
+    pub fn http_challenge(&self) -> Challenge<P, H, Http> {
         self.api_auth
             .http_challenge()
             .map(|c| Challenge::new(&self.inner, c.clone(), &self.auth_url))
@@ -117,7 +118,7 @@ impl<P: Persist> Auth<P> {
     /// ```
     ///
     /// The dns proof is not the same as the http proof.
-    pub fn dns_challenge(&self) -> Challenge<P, Dns> {
+    pub fn dns_challenge(&self) -> Challenge<P, H, Dns> {
         self.api_auth
             .dns_challenge()
             .map(|c| Challenge::new(&self.inner, c.clone(), &self.auth_url))
@@ -131,7 +132,7 @@ impl<P: Persist> Auth<P> {
     /// must contain a single dNSName SAN containing the domain being
     /// validated, as well as an ACME extension containing the SHA256 of the
     /// key authorization.
-    pub fn tls_alpn_challenge(&self) -> Challenge<P, TlsAlpn> {
+    pub fn tls_alpn_challenge(&self) -> Challenge<P, H, TlsAlpn> {
         self.api_auth
             .tls_alpn_challenge()
             .map(|c| Challenge::new(&self.inner, c.clone(), &self.auth_url))
@@ -161,14 +162,14 @@ pub struct TlsAlpn;
 /// A DNS, HTTP, or TLS-ALPN challenge as obtained from the [`Auth`].
 ///
 /// [`Auth`]: struct.Auth.html
-pub struct Challenge<P: Persist, A> {
-    inner: Arc<AccountInner<P>>,
+pub struct Challenge<P: Persist, H: HttpClient, A> {
+    inner: Arc<AccountInner<P, H>>,
     api_challenge: ApiChallenge,
     auth_url: String,
     _ph: std::marker::PhantomData<A>,
 }
 
-impl<P: Persist> Challenge<P, Http> {
+impl<P: Persist, H: HttpClient> Challenge<P, H, Http> {
     /// The `token` is a unique identifier of the challenge. It is the file name in the
     /// http challenge like so:
     ///
@@ -186,7 +187,7 @@ impl<P: Persist> Challenge<P, Http> {
     }
 }
 
-impl<P: Persist> Challenge<P, Dns> {
+impl<P: Persist, H: HttpClient> Challenge<P, H, Dns> {
     /// The `proof` is the `TXT` record placed under:
     ///
     /// ```text
@@ -198,7 +199,7 @@ impl<P: Persist> Challenge<P, Dns> {
     }
 }
 
-impl<P: Persist> Challenge<P, TlsAlpn> {
+impl<P: Persist, H: HttpClient> Challenge<P, H, TlsAlpn> {
     /// The `proof` is the contents of the ACME extension to be placed in the
     /// certificate used for validation.
     pub fn tls_alpn_proof(&self) -> [u8; 32] {
@@ -207,8 +208,8 @@ impl<P: Persist> Challenge<P, TlsAlpn> {
     }
 }
 
-impl<P: Persist, A> Challenge<P, A> {
-    fn new(inner: &Arc<AccountInner<P>>, api_challenge: ApiChallenge, auth_url: &str) -> Self {
+impl<P: Persist, H:HttpClient, A> Challenge<P, H, A> {
+    fn new(inner: &Arc<AccountInner<P, H>>, api_challenge: ApiChallenge, auth_url: &str) -> Self {
         Challenge {
             inner: inner.clone(),
             api_challenge,
@@ -273,8 +274,8 @@ fn key_authorization(token: &str, key: &AcmeKey, extra_sha256: bool) -> String {
     }
 }
 
-fn wait_for_auth_status<P: Persist>(
-    inner: &Arc<AccountInner<P>>,
+fn wait_for_auth_status<P: Persist, H: HttpClient>(
+    inner: &Arc<AccountInner<P, H>>,
     auth_url: &str,
     delay_millis: u64,
 ) -> Result<ApiAuth> {

@@ -165,6 +165,10 @@ pub mod api;
 pub mod order;
 pub mod persist;
 
+#[cfg(feature = "ureq")]
+pub mod ureq;
+
+
 #[cfg(test)]
 mod test;
 

@@ -4,10 +4,10 @@ use std::sync::Arc;
 use crate::acc::AcmeKey;
 use crate::api::{ApiAccount, ApiDirectory};
 use crate::persist::{Persist, PersistKey, PersistKind};
-use crate::req::{req_expect_header, req_get, req_handle_error};
 use crate::trans::{NoncePool, Transport};
 use crate::util::read_json;
 use crate::{Account, Result};
+use crate::req::{HttpClient, HttpResponse};
 
 const LETSENCRYPT: &str = "https://acme-v02.api.letsencrypt.org/directory";
 const LETSENCRYPT_STAGING: &str = "https://acme-staging-v02.api.letsencrypt.org/directory";
@@ -37,24 +37,38 @@ impl<'a> DirectoryUrl<'a> {
 
 /// Entry point for accessing an ACME API.
 #[derive(Clone)]
-pub struct Directory<P: Persist> {
+pub struct Directory<P: Persist, H: HttpClient> {
     persist: P,
-    nonce_pool: Arc<NoncePool>,
+    client: H,
+    nonce_pool: Arc<NoncePool<H>>,
     api_directory: ApiDirectory,
 }
 
-impl<P: Persist> Directory<P> {
+#[cfg(feature = "ureq")]
+impl<P: Persist> Directory <P, crate::ureq::UReq> {
+    #[cfg(feature = "ureq")]
+    pub fn from_url_with_ureq(persist: P, url: DirectoryUrl) -> Result<Self> {
+        Self::from_url_with_default(persist, url)
+    }
+}
+
+impl<P: Persist, H: HttpClient> Directory<P, H> {
     /// Create a directory over a persistence implementation and directory url.
-    pub fn from_url(persist: P, url: DirectoryUrl) -> Result<Directory<P>> {
+    pub fn from_url_with_client(persist: P, client: H, url: DirectoryUrl) -> Result<Directory<P, H>> {
         let dir_url = url.to_url();
-        let res = req_handle_error(req_get(dir_url))?;
+        let res = client.get(dir_url).handle_errors()?;
         let api_directory: ApiDirectory = read_json(res)?;
-        let nonce_pool = Arc::new(NoncePool::new(&api_directory.newNonce));
+        let nonce_pool = Arc::new(NoncePool::new(client.clone(), &api_directory.newNonce));
         Ok(Directory {
             persist,
+            client,
             nonce_pool,
             api_directory,
         })
+    }
+
+    pub fn from_url_with_default(persist: P, url: DirectoryUrl) -> Result<Directory<P, H>> where H: Default {
+        Self::from_url_with_client(persist, Default::default(), url)
     }
 
     /// Access an account identified by a contact email.
@@ -70,7 +84,7 @@ impl<P: Persist> Directory<P> {
     ///
     /// This is the same as calling
     /// `account_with_realm(contact_email, ["mailto: <contact_email>"]`)
-    pub fn account(&self, contact_email: &str) -> Result<Account<P>> {
+    pub fn account(&self, contact_email: &str) -> Result<Account<P, H>> {
         // Contact email is the persistence realm when using this method.
         let contact = vec![format!("mailto:{}", contact_email)];
         self.account_with_realm(contact_email, Some(contact))
@@ -96,7 +110,7 @@ impl<P: Persist> Directory<P> {
         &self,
         realm: &str,
         contact: Option<Vec<String>>,
-    ) -> Result<Account<P>> {
+    ) -> Result<Account<P, H>> {
         // key in persistence for acme account private key
         let pem_key = PersistKey::new(realm, PersistKind::AccountPrivateKey, "acme_account");
 
@@ -123,14 +137,14 @@ impl<P: Persist> Directory<P> {
             ..Default::default()
         };
 
-        let mut transport = Transport::new(&self.nonce_pool, acme_key);
+        let mut transport = Transport::new_with(&self.nonce_pool, self.client.clone(), acme_key);
         let res = transport.call_jwk(&self.api_directory.newAccount, &acc)?;
-        let kid = req_expect_header(&res, "location")?;
+        let kid = res.header("location")?;
         debug!("Key id is: {}", kid);
-        let api_account: ApiAccount = read_json(res)?;
-
         // fill in the server returned key id
-        transport.set_key_id(kid);
+        transport.set_key_id(kid.to_string());
+
+        let api_account: ApiAccount = read_json(res)?;
 
         // If we did create a new key, save it back to the persistence.
         if is_new {

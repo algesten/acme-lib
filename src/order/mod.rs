@@ -26,6 +26,7 @@ use crate::acc::AccountInner;
 use crate::api::{ApiAuth, ApiEmptyString, ApiFinalize, ApiOrder};
 use crate::cert::{create_csr, Certificate};
 use crate::persist::{Persist, PersistKey, PersistKind};
+use crate::req::{HttpClient, HttpResponse};
 use crate::util::{base64url, read_json};
 use crate::Result;
 
@@ -34,14 +35,14 @@ mod auth;
 pub use self::auth::{Auth, Challenge};
 
 /// The order wrapped with an outer façade.
-pub(crate) struct Order<P: Persist> {
-    inner: Arc<AccountInner<P>>,
+pub(crate) struct Order<P: Persist, H: HttpClient> {
+    inner: Arc<AccountInner<P, H>>,
     api_order: ApiOrder,
     url: String,
 }
 
-impl<P: Persist> Order<P> {
-    pub(crate) fn new(inner: &Arc<AccountInner<P>>, api_order: ApiOrder, url: String) -> Self {
+impl<P: Persist, H: HttpClient> Order<P, H> {
+    pub(crate) fn new(inner: &Arc<AccountInner<P, H>>, api_order: ApiOrder, url: String) -> Self {
         Order {
             inner: inner.clone(),
             api_order,
@@ -51,11 +52,11 @@ impl<P: Persist> Order<P> {
 }
 
 /// Helper to refresh an order status (POST-as-GET).
-pub(crate) fn refresh_order<P: Persist>(
-    inner: &Arc<AccountInner<P>>,
+pub(crate) fn refresh_order<P: Persist, H: HttpClient>(
+    inner: &Arc<AccountInner<P, H>>,
     url: String,
     want_status: &'static str,
-) -> Result<Order<P>> {
+) -> Result<Order<P, H>> {
     let res = inner.transport.call(&url, &ApiEmptyString)?;
 
     // our test rig requires the order to be in `want_status`.
@@ -70,7 +71,7 @@ pub(crate) fn refresh_order<P: Persist>(
 }
 
 #[cfg(not(test))]
-fn api_order_of(res: ureq::Response, _want_status: &str) -> Result<ApiOrder> {
+fn api_order_of(res: impl HttpResponse, _want_status: &str) -> Result<ApiOrder> {
     read_json(res)
 }
 
@@ -101,11 +102,11 @@ fn api_order_of(res: ureq::Response, want_status: &str) -> Result<ApiOrder> {
 /// [`Account::new_order`]: ../struct.Account.html#method.new_order
 /// [confirmed ownership]: ../index.html#domain-ownership
 /// [CSR]: https://en.wikipedia.org/wiki/Certificate_signing_request
-pub struct NewOrder<P: Persist> {
-    pub(crate) order: Order<P>,
+pub struct NewOrder<P: Persist, H: HttpClient> {
+    pub(crate) order: Order<P, H>,
 }
 
-impl<P: Persist> NewOrder<P> {
+impl<P: Persist, H: HttpClient> NewOrder<P, H> {
     /// Tell if the domains in this order have been authorized.
     ///
     /// This doesn't do any calls against the API. You must manually call [`refresh`].
@@ -124,7 +125,7 @@ impl<P: Persist> NewOrder<P> {
     ///
     /// [`is_validated`]: struct.NewOrder.html#method.is_validated
     /// [`CsrOrder`]: struct.CsrOrder.html
-    pub fn confirm_validations(&self) -> Option<CsrOrder<P>> {
+    pub fn confirm_validations(&self) -> Option<CsrOrder<P, H>> {
         if self.is_validated() {
             Some(CsrOrder {
                 order: Order::new(
@@ -153,7 +154,7 @@ impl<P: Persist> NewOrder<P> {
     ///
     /// If the order includes new domain names that have not been authorized before, this
     /// list might contain a mix of already valid and not yet valid auths.
-    pub fn authorizations(&self) -> Result<Vec<Auth<P>>> {
+    pub fn authorizations(&self) -> Result<Vec<Auth<P, H>>> {
         let mut result = vec![];
         if let Some(authorizations) = &self.order.api_order.authorizations {
             for auth_url in authorizations {
@@ -191,11 +192,11 @@ impl<P: Persist> NewOrder<P> {
 /// [CSR]: https://en.wikipedia.org/wiki/Certificate_signing_request
 /// [functions to create key pairs]: ../index.html#functions
 /// [supports]: https://letsencrypt.org/docs/integration-guide/#supported-key-algorithms
-pub struct CsrOrder<P: Persist> {
-    pub(crate) order: Order<P>,
+pub struct CsrOrder<P: Persist, H: HttpClient> {
+    pub(crate) order: Order<P, H>,
 }
 
-impl<P: Persist> CsrOrder<P> {
+impl<P: Persist, H: HttpClient> CsrOrder<P, H> {
     /// Finalize the order by providing a private key as PEM.
     ///
     /// Once the CSR has been submitted, the order goes into a `processing` status,
@@ -205,7 +206,7 @@ impl<P: Persist> CsrOrder<P> {
     /// This is a convenience wrapper that in turn calls the lower level [`finalize_pkey`].
     ///
     /// [`finalize_pkey`]: struct.CsrOrder.html#method.finalize_pkey
-    pub fn finalize(self, private_key_pem: &str, delay_millis: u64) -> Result<CertOrder<P>> {
+    pub fn finalize(self, private_key_pem: &str, delay_millis: u64) -> Result<CertOrder<P, H>> {
         let pkey_pri = PKey::private_key_from_pem(private_key_pem.as_bytes())
             .map_err(|e| format!("Error reading private key PEM: {}", e))?;
         self.finalize_pkey(pkey_pri, delay_millis)
@@ -222,7 +223,7 @@ impl<P: Persist> CsrOrder<P> {
         self,
         private_key: PKey<pkey::Private>,
         delay_millis: u64,
-    ) -> Result<CertOrder<P>> {
+    ) -> Result<CertOrder<P, H>> {
         //
         // the domains that we have authorized
         let domains = self.order.api_order.domains();
@@ -261,11 +262,11 @@ impl<P: Persist> CsrOrder<P> {
     }
 }
 
-fn wait_for_order_status<P: Persist>(
-    inner: &Arc<AccountInner<P>>,
+fn wait_for_order_status<P: Persist, H: HttpClient>(
+    inner: &Arc<AccountInner<P, H>>,
     url: &str,
     delay_millis: u64,
-) -> Result<Order<P>> {
+) -> Result<Order<P, H>> {
     loop {
         let order = refresh_order(inner, url.to_string(), "valid")?;
         if !order.api_order.is_status_processing() {
@@ -276,12 +277,12 @@ fn wait_for_order_status<P: Persist>(
 }
 
 /// Order for an issued certificate that is ready to download.
-pub struct CertOrder<P: Persist> {
+pub struct CertOrder<P: Persist, H: HttpClient> {
     private_key: PKey<pkey::Private>,
-    order: Order<P>,
+    order: Order<P, H>,
 }
 
-impl<P: Persist> CertOrder<P> {
+impl<P: Persist, H: HttpClient> CertOrder<P, H> {
     /// Request download of the issued certificate.
     ///
     /// When downloaded, the certificate and key will be saved in the
@@ -305,7 +306,7 @@ impl<P: Persist> CertOrder<P> {
         debug!("Save private key: {}", pk_key);
         persist.put(&pk_key, &pkey_pem_bytes)?;
 
-        let cert = res.into_string()?;
+        let cert = res.body();
         let pk_crt = PersistKey::new(realm, PersistKind::Certificate, &primary_name);
         debug!("Save certificate: {}", pk_crt);
         persist.put(&pk_crt, cert.as_bytes())?;

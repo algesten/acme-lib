@@ -5,7 +5,8 @@ use crate::api::{ApiAccount, ApiDirectory, ApiIdentifier, ApiOrder, ApiRevocatio
 use crate::cert::Certificate;
 use crate::order::{NewOrder, Order};
 use crate::persist::{Persist, PersistKey, PersistKind};
-use crate::req::req_expect_header;
+use crate::req::HttpClient;
+use crate::req::HttpResponse;
 use crate::trans::Transport;
 use crate::util::{base64url, read_json};
 use crate::Result;
@@ -15,9 +16,9 @@ mod akey;
 pub(crate) use self::akey::AcmeKey;
 
 #[derive(Clone, Debug)]
-pub(crate) struct AccountInner<P: Persist> {
+pub(crate) struct AccountInner<P: Persist, H: HttpClient> {
     pub persist: P,
-    pub transport: Transport,
+    pub transport: Transport<H>,
     pub realm: String,
     pub api_account: ApiAccount,
     pub api_directory: ApiDirectory,
@@ -38,14 +39,14 @@ pub(crate) struct AccountInner<P: Persist> {
 ///
 /// [`Directory::account`]: struct.Directory.html#method.account
 #[derive(Clone)]
-pub struct Account<P: Persist> {
-    inner: Arc<AccountInner<P>>,
+pub struct Account<P: Persist, H: HttpClient> {
+    inner: Arc<AccountInner<P, H>>,
 }
 
-impl<P: Persist> Account<P> {
+impl<P: Persist, H: HttpClient> Account<P, H> {
     pub(crate) fn new(
         persist: P,
-        transport: Transport,
+        transport: Transport<H>,
         realm: &str,
         api_account: ApiAccount,
         api_directory: ApiDirectory,
@@ -116,7 +117,7 @@ impl<P: Persist> Account<P> {
     /// names supplied are exactly the same.
     ///
     /// [100 names]: https://letsencrypt.org/docs/rate-limits/
-    pub fn new_order(&self, primary_name: &str, alt_names: &[&str]) -> Result<NewOrder<P>> {
+    pub fn new_order(&self, primary_name: &str, alt_names: &[&str]) -> Result<NewOrder<P, H>> {
         // construct the identifiers
         let prim_arr = [primary_name];
         let domains = prim_arr.iter().chain(alt_names);
@@ -133,10 +134,10 @@ impl<P: Persist> Account<P> {
         let new_order_url = &self.inner.api_directory.newOrder;
 
         let res = self.inner.transport.call(new_order_url, &order)?;
-        let order_url = req_expect_header(&res, "location")?;
+        let order_url = res.header("location")?.to_string();
         let api_order: ApiOrder = read_json(res)?;
 
-        let order = Order::new(&self.inner, api_order, order_url);
+        let order = Order::new(&self.inner, api_order, order_url.to_string());
         Ok(NewOrder { order })
     }
 

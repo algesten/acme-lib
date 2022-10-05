@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::acc::AcmeKey;
 use crate::jwt::*;
-use crate::req::{req_expect_header, req_handle_error, req_head, req_post};
+use crate::req::{HttpClient, HttpResponse};
 use crate::util::base64url;
 use crate::Result;
 
@@ -19,15 +19,18 @@ use crate::Result;
 /// 3. `set_key_id` from the returned `Location` header.
 /// 4. `call()` for all calls after that.
 #[derive(Clone, Debug)]
-pub(crate) struct Transport {
+pub(crate) struct Transport<H: HttpClient> {
     acme_key: AcmeKey,
-    nonce_pool: Arc<NoncePool>,
+    client: H,
+    nonce_pool: Arc<NoncePool<H>>,
 }
 
-impl Transport {
-    pub fn new(nonce_pool: &Arc<NoncePool>, acme_key: AcmeKey) -> Self {
+impl<H: HttpClient> Transport<H> {
+
+    pub fn new_with(nonce_pool: &Arc<NoncePool<H>>, client: H, acme_key: AcmeKey) -> Self {
         Transport {
             acme_key,
+            client,
             nonce_pool: nonce_pool.clone(),
         }
     }
@@ -43,12 +46,12 @@ impl Transport {
     }
 
     /// Make call using the full jwk. Only for the first newAccount request.
-    pub fn call_jwk<T: Serialize + ?Sized>(&self, url: &str, body: &T) -> Result<ureq::Response> {
+    pub fn call_jwk<T: Serialize + ?Sized>(&self, url: &str, body: &T) -> Result<impl HttpResponse> {
         self.do_call(url, body, jws_with_jwk)
     }
 
     /// Make call using the key id
-    pub fn call<T: Serialize + ?Sized>(&self, url: &str, body: &T) -> Result<ureq::Response> {
+    pub fn call<T: Serialize + ?Sized>(&self, url: &str, body: &T) -> Result<impl HttpResponse> {
         self.do_call(url, body, jws_with_kid)
     }
 
@@ -57,7 +60,7 @@ impl Transport {
         url: &str,
         body: &T,
         make_body: F,
-    ) -> Result<ureq::Response> {
+    ) -> Result<impl HttpResponse> {
         // The ACME API may at any point invalidate all nonces. If we detect such an
         // error, we loop until the server accepts the nonce.
         loop {
@@ -70,14 +73,14 @@ impl Transport {
             debug!("Call endpoint {}", url);
 
             // Post it to the URL
-            let response = req_post(url, &body);
+            let response = self.client.post(url, &body);
 
             // Regardless of the request being a success or not, there might be
             // a nonce in the response.
             self.nonce_pool.extract_nonce(&response);
 
             // Turn errors into ApiProblem.
-            let result = req_handle_error(response);
+            let result = response.handle_errors();
 
             if let Err(problem) = &result {
                 if problem.is_bad_nonce() {
@@ -99,21 +102,23 @@ impl Transport {
 
 /// Shared pool of nonces.
 #[derive(Default, Debug)]
-pub(crate) struct NoncePool {
+pub(crate) struct NoncePool<H: HttpClient> {
     nonce_url: String,
+    client: H,
     pool: Mutex<VecDeque<String>>,
 }
 
-impl NoncePool {
-    pub fn new(nonce_url: &str) -> Self {
+impl<H: HttpClient> NoncePool<H> {
+    pub fn new(client: H, nonce_url: &str) -> Self {
         NoncePool {
             nonce_url: nonce_url.into(),
-            ..Default::default()
+            client,
+            pool: Default::default()
         }
     }
 
-    fn extract_nonce(&self, res: &ureq::Response) {
-        if let Some(nonce) = res.header("replay-nonce") {
+    fn extract_nonce(&self, res: &impl HttpResponse) {
+        if let Ok(nonce) = res.header("replay-nonce") {
             trace!("Extract nonce");
             let mut pool = self.pool.lock().unwrap();
             pool.push_back(nonce.to_string());
@@ -132,8 +137,8 @@ impl NoncePool {
             }
         }
         debug!("Request new nonce");
-        let res = req_head(&self.nonce_url);
-        Ok(req_expect_header(&res, "replay-nonce")?)
+        let res = self.client.head(&self.nonce_url);
+        Ok(res.header("replay-nonce")?.to_string())
     }
 }
 
