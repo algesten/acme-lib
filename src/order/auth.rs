@@ -1,5 +1,3 @@
-//
-use openssl::sha::sha256;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -7,6 +5,7 @@ use std::time::Duration;
 use crate::acc::AccountInner;
 use crate::acc::AcmeKey;
 use crate::api::{ApiAuth, ApiChallenge, ApiEmptyObject, ApiEmptyString};
+use crate::crypto::Crypto;
 use crate::jwt::*;
 use crate::persist::Persist;
 use crate::req::{HttpClient};
@@ -30,14 +29,14 @@ use crate::Result;
 /// [HTTP]: #method.http_challenge
 /// [DNS]: #method.dns_challenge
 #[derive(Debug)]
-pub struct Auth<P: Persist, H: HttpClient> {
-    inner: Arc<AccountInner<P, H>>,
+pub struct Auth<P: Persist, H: HttpClient, C: Crypto> where for <'a> &'a C::AccountKey: Into<Jwk> {
+    inner: Arc<AccountInner<P, H, C>>,
     api_auth: ApiAuth,
     auth_url: String,
 }
 
-impl<P: Persist, H: HttpClient> Auth<P, H> {
-    pub(crate) fn new(inner: &Arc<AccountInner<P, H>>, api_auth: ApiAuth, auth_url: &str) -> Self {
+impl<P: Persist, H: HttpClient, C: Crypto> Auth<P, H, C> where for <'a> &'a C::AccountKey: Into<Jwk> {
+    pub(crate) fn new(inner: &Arc<AccountInner<P, H, C>>, api_auth: ApiAuth, auth_url: &str) -> Self {
         Auth {
             inner: inner.clone(),
             api_auth,
@@ -73,7 +72,7 @@ impl<P: Persist, H: HttpClient> Auth<P, H> {
     /// use std::fs::File;
     /// use std::io::Write;
     ///
-    /// fn web_authorize<P: Persist, H: HttpClient>(auth: &Auth<P, H>) -> Result<(), Error> {
+    /// fn web_authorize<P: Persist, H: HttpClient, C: Crypto>(auth: &Auth<P, H, C>) -> Result<(), Error> {
     ///   let challenge = auth.http_challenge();
     ///   // Assuming our web server's root is under /var/www
     ///   let path = {
@@ -86,7 +85,7 @@ impl<P: Persist, H: HttpClient> Auth<P, H> {
     ///   Ok(())
     /// }
     /// ```
-    pub fn http_challenge(&self) -> Challenge<P, H, Http> {
+    pub fn http_challenge(&self) -> Challenge<P, H, C, Http> {
         self.api_auth
             .http_challenge()
             .map(|c| Challenge::new(&self.inner, c.clone(), &self.auth_url))
@@ -108,7 +107,7 @@ impl<P: Persist, H: HttpClient> Auth<P, H> {
     /// use acme_lib::order::Auth;
     /// use acme_lib::Error;
     ///
-    /// fn dns_authorize<P: Persist>(auth: &Auth<P>) -> Result<(), Error> {
+    /// fn dns_authorize<P: Persist, H: HttpClient, C: Crypto>(auth: &Auth<P, H, C>) -> Result<(), Error> {
     ///   let challenge = auth.dns_challenge();
     ///   let record = format!("_acme-challenge.{}.", auth.domain_name());
     ///   // route_53_set_record(&record, "TXT", challenge.dns_proof());
@@ -118,7 +117,7 @@ impl<P: Persist, H: HttpClient> Auth<P, H> {
     /// ```
     ///
     /// The dns proof is not the same as the http proof.
-    pub fn dns_challenge(&self) -> Challenge<P, H, Dns> {
+    pub fn dns_challenge(&self) -> Challenge<P, H, C, Dns> {
         self.api_auth
             .dns_challenge()
             .map(|c| Challenge::new(&self.inner, c.clone(), &self.auth_url))
@@ -132,7 +131,7 @@ impl<P: Persist, H: HttpClient> Auth<P, H> {
     /// must contain a single dNSName SAN containing the domain being
     /// validated, as well as an ACME extension containing the SHA256 of the
     /// key authorization.
-    pub fn tls_alpn_challenge(&self) -> Challenge<P, H, TlsAlpn> {
+    pub fn tls_alpn_challenge(&self) -> Challenge<P, H, C, TlsAlpn> {
         self.api_auth
             .tls_alpn_challenge()
             .map(|c| Challenge::new(&self.inner, c.clone(), &self.auth_url))
@@ -162,14 +161,14 @@ pub struct TlsAlpn;
 /// A DNS, HTTP, or TLS-ALPN challenge as obtained from the [`Auth`].
 ///
 /// [`Auth`]: struct.Auth.html
-pub struct Challenge<P: Persist, H: HttpClient, A> {
-    inner: Arc<AccountInner<P, H>>,
+pub struct Challenge<P: Persist, H: HttpClient, C: Crypto, A> where for <'a> &'a C::AccountKey: Into<Jwk> {
+    inner: Arc<AccountInner<P, H, C>>,
     api_challenge: ApiChallenge,
     auth_url: String,
     _ph: std::marker::PhantomData<A>,
 }
 
-impl<P: Persist, H: HttpClient> Challenge<P, H, Http> {
+impl<P: Persist, H: HttpClient, C: Crypto> Challenge<P, H, C, Http> where for <'a> &'a C::AccountKey: Into<Jwk> {
     /// The `token` is a unique identifier of the challenge. It is the file name in the
     /// http challenge like so:
     ///
@@ -187,7 +186,7 @@ impl<P: Persist, H: HttpClient> Challenge<P, H, Http> {
     }
 }
 
-impl<P: Persist, H: HttpClient> Challenge<P, H, Dns> {
+impl<P: Persist, H: HttpClient, C: Crypto> Challenge<P, H, C, Dns> where for <'a> &'a C::AccountKey: Into<Jwk> {
     /// The `proof` is the `TXT` record placed under:
     ///
     /// ```text
@@ -199,17 +198,18 @@ impl<P: Persist, H: HttpClient> Challenge<P, H, Dns> {
     }
 }
 
-impl<P: Persist, H: HttpClient> Challenge<P, H, TlsAlpn> {
+impl<P: Persist, H: HttpClient, C: Crypto> Challenge<P, H, C, TlsAlpn> where for <'a> &'a C::AccountKey: Into<Jwk> {
     /// The `proof` is the contents of the ACME extension to be placed in the
     /// certificate used for validation.
     pub fn tls_alpn_proof(&self) -> [u8; 32] {
         let acme_key = self.inner.transport.acme_key();
-        sha256(key_authorization(&self.api_challenge.token, acme_key, false).as_bytes())
+
+        C::sha256(&key_authorization(&self.api_challenge.token, acme_key, false).as_bytes())
     }
 }
 
-impl<P: Persist, H:HttpClient, A> Challenge<P, H, A> {
-    fn new(inner: &Arc<AccountInner<P, H>>, api_challenge: ApiChallenge, auth_url: &str) -> Self {
+impl<P: Persist, H:HttpClient, C: Crypto, A> Challenge<P, H, C, A> where for <'a> &'a C::AccountKey: Into<Jwk>  {
+    fn new(inner: &Arc<AccountInner<P, H, C>>, api_challenge: ApiChallenge, auth_url: &str) -> Self {
         Challenge {
             inner: inner.clone(),
             api_challenge,
@@ -261,24 +261,24 @@ impl<P: Persist, H:HttpClient, A> Challenge<P, H, A> {
     }
 }
 
-fn key_authorization(token: &str, key: &AcmeKey, extra_sha256: bool) -> String {
-    let jwk: Jwk = key.into();
+fn key_authorization<C: Crypto>(token: &str, key: &AcmeKey<C>, extra_sha256: bool) -> String where for <'a> &'a C::AccountKey: Into<Jwk> {
+    let jwk: Jwk = key.private_key().into();
     let jwk_thumb: JwkThumb = (&jwk).into();
     let jwk_json = serde_json::to_string(&jwk_thumb).expect("jwk_thumb");
-    let digest = base64url(&sha256(jwk_json.as_bytes()));
+    let digest = base64url(&C::sha256(jwk_json.as_bytes()));
     let key_auth = format!("{}.{}", token, digest);
     if extra_sha256 {
-        base64url(&sha256(key_auth.as_bytes()))
+        base64url(&C::sha256(key_auth.as_bytes()))
     } else {
         key_auth
     }
 }
 
-fn wait_for_auth_status<P: Persist, H: HttpClient>(
-    inner: &Arc<AccountInner<P, H>>,
+fn wait_for_auth_status<P: Persist, H: HttpClient, C: Crypto>(
+    inner: &Arc<AccountInner<P, H, C>>,
     auth_url: &str,
     delay_millis: u64,
-) -> Result<ApiAuth> {
+) -> Result<ApiAuth> where for <'a> &'a C::AccountKey: Into<Jwk> {
     let auth = loop {
         let res = inner.transport.call(auth_url, &ApiEmptyString)?;
         let auth: ApiAuth = read_json(res)?;

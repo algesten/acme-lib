@@ -18,3 +18,14 @@ pub(crate) fn read_json<T: DeserializeOwned>(res: impl HttpResponse) -> Result<T
     debug!("{}", res_body);
     Ok(serde_json::from_str(&res_body)?)
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_parse_date() {
+        let x = parse_date("May  3 07:40:15 2019 GMT");
+        assert_eq!(time::strftime("%F %T", &x).unwrap(), "2019-05-03 07:40:15");
+    }
+}

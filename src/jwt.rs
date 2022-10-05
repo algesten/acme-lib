@@ -1,9 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-use crate::acc::AcmeKey;
-use crate::cert::EC_GROUP_P256;
-use crate::util::base64url;
-
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub(crate) struct JwsProtected {
     alg: String,
@@ -37,14 +33,14 @@ impl JwsProtected {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub(crate) struct Jwk {
-    alg: String,
-    crv: String,
-    kty: String,
+pub struct Jwk {
+    pub alg: String,
+    pub crv: String,
+    pub kty: String,
     #[serde(rename = "use")]
-    _use: String,
-    x: String,
-    y: String,
+    pub _use: String,
+    pub x: String,
+    pub y: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -54,26 +50,6 @@ pub(crate) struct JwkThumb {
     kty: String,
     x: String,
     y: String,
-}
-
-impl From<&AcmeKey> for Jwk {
-    fn from(a: &AcmeKey) -> Self {
-        let mut ctx = openssl::bn::BigNumContext::new().expect("BigNumContext");
-        let mut x = openssl::bn::BigNum::new().expect("BigNum");
-        let mut y = openssl::bn::BigNum::new().expect("BigNum");
-        a.private_key()
-            .public_key()
-            .affine_coordinates_gfp(&*EC_GROUP_P256, &mut x, &mut y, &mut ctx)
-            .expect("affine_coordinates_gfp");
-        Jwk {
-            alg: "ES256".into(),
-            kty: "EC".into(),
-            crv: "P-256".into(),
-            _use: "sig".into(),
-            x: base64url(&x.to_vec()),
-            y: base64url(&y.to_vec()),
-        }
-    }
 }
 
 impl From<&Jwk> for JwkThumb {

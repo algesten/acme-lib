@@ -2,7 +2,7 @@ use crate::api::ApiProblem;
 use crate::req::{HttpClient, HttpResponse, HttpResult};
 
 #[derive(Copy, Clone, Default)]
-pub struct UReq();
+pub struct UReq;
 
 impl HttpClient for UReq {
     type Response = ureq::Response;

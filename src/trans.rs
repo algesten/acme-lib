@@ -1,10 +1,9 @@
-use openssl::ecdsa::EcdsaSig;
-use openssl::sha::sha256;
 use serde::Serialize;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
 use crate::acc::AcmeKey;
+use crate::crypto::Crypto;
 use crate::jwt::*;
 use crate::req::{HttpClient, HttpResponse};
 use crate::util::base64url;
@@ -19,15 +18,15 @@ use crate::Result;
 /// 3. `set_key_id` from the returned `Location` header.
 /// 4. `call()` for all calls after that.
 #[derive(Clone, Debug)]
-pub(crate) struct Transport<H: HttpClient> {
-    acme_key: AcmeKey,
+pub(crate) struct Transport<H: HttpClient, C: Crypto> where for <'a> &'a C::AccountKey: Into<Jwk> {
+    acme_key: AcmeKey<C>,
     client: H,
     nonce_pool: Arc<NoncePool<H>>,
 }
 
-impl<H: HttpClient> Transport<H> {
+impl<H: HttpClient, C: Crypto> Transport<H, C> where for <'a> &'a C::AccountKey: Into<Jwk> {
 
-    pub fn new_with(nonce_pool: &Arc<NoncePool<H>>, client: H, acme_key: AcmeKey) -> Self {
+    pub fn new_with(nonce_pool: &Arc<NoncePool<H>>, client: H, acme_key: AcmeKey<C>) -> Self {
         Transport {
             acme_key,
             client,
@@ -41,7 +40,7 @@ impl<H: HttpClient> Transport<H> {
     }
 
     /// The key used in the transport
-    pub fn acme_key(&self) -> &AcmeKey {
+    pub fn acme_key(&self) -> &AcmeKey<C> {
         &self.acme_key
     }
 
@@ -55,7 +54,7 @@ impl<H: HttpClient> Transport<H> {
         self.do_call(url, body, jws_with_kid)
     }
 
-    fn do_call<T: Serialize + ?Sized, F: Fn(&str, String, &AcmeKey, &T) -> Result<String>>(
+    fn do_call<T: Serialize + ?Sized, F: Fn(&str, String, &AcmeKey<C>, &T) -> Result<String>>(
         &self,
         url: &str,
         body: &T,
@@ -142,32 +141,32 @@ impl<H: HttpClient> NoncePool<H> {
     }
 }
 
-fn jws_with_kid<T: Serialize + ?Sized>(
+fn jws_with_kid<T: Serialize + ?Sized, C: Crypto>(
     url: &str,
     nonce: String,
-    key: &AcmeKey,
+    key: &AcmeKey<C>,
     payload: &T,
-) -> Result<String> {
+) -> Result<String> where for <'a> &'a C::AccountKey: Into<Jwk> {
     let protected = JwsProtected::new_kid(key.key_id(), url, nonce);
     jws_with(protected, key, payload)
 }
 
-fn jws_with_jwk<T: Serialize + ?Sized>(
+fn jws_with_jwk<T: Serialize + ?Sized, C: Crypto>(
     url: &str,
     nonce: String,
-    key: &AcmeKey,
+    key: &AcmeKey<C>,
     payload: &T,
-) -> Result<String> {
-    let jwk: Jwk = key.into();
+) -> Result<String> where for <'a> &'a C::AccountKey: Into<Jwk> {
+    let jwk: Jwk = key.private_key().into();
     let protected = JwsProtected::new_jwk(jwk, url, nonce);
     jws_with(protected, key, payload)
 }
 
-fn jws_with<T: Serialize + ?Sized>(
+fn jws_with<T: Serialize + ?Sized, C: Crypto>(
     protected: JwsProtected,
-    key: &AcmeKey,
+    key: &AcmeKey<C>,
     payload: &T,
-) -> Result<String> {
+) -> Result<String> where for <'a> &'a C::AccountKey: Into<Jwk>  {
     let protected = {
         let pro_json = serde_json::to_string(&protected)?;
         base64url(pro_json.as_bytes())
@@ -184,15 +183,8 @@ fn jws_with<T: Serialize + ?Sized>(
     };
 
     let to_sign = format!("{}.{}", protected, payload);
-    let digest = sha256(to_sign.as_bytes());
-    let sig = EcdsaSig::sign(&digest, key.private_key()).expect("EcdsaSig::sign");
-    let r = sig.r().to_vec();
-    let s = sig.s().to_vec();
 
-    let mut v = Vec::with_capacity(r.len() + s.len());
-    v.extend_from_slice(&r);
-    v.extend_from_slice(&s);
-    let signature = base64url(&v);
+    let signature = base64url(&key.sign(&to_sign.as_bytes()));
 
     let jws = Jws::new(protected, payload, signature);
 

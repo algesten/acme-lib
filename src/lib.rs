@@ -153,13 +153,13 @@
 extern crate log;
 
 mod acc;
-mod cert;
 mod dir;
 mod error;
 mod jwt;
 mod req;
 mod trans;
 mod util;
+mod crypto;
 
 pub mod api;
 pub mod order;
@@ -168,11 +168,13 @@ pub mod persist;
 #[cfg(feature = "ureq")]
 pub mod ureq;
 
+#[cfg(feature = "openssl")]
+pub mod openssl;
+
 
 #[cfg(test)]
 mod test;
 
 pub use crate::acc::{Account, RevocationReason};
-pub use crate::cert::{create_p256_key, create_p384_key, create_rsa_key, Certificate};
 pub use crate::dir::{Directory, DirectoryUrl};
 pub use crate::error::{Error, Result};
