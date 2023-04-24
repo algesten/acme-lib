@@ -59,9 +59,11 @@ pub(crate) fn create_csr(pkey: &PKey<pkey::Private>, primary_name: &str, domains
     // set all domains as alt names
     let mut stack = Stack::new().expect("Stack::new");
     let ctx = req_bld.x509v3_context(None);
-    let mut an = SubjectAlternativeName::new();
-    domains.iter().map(|&e| an.dns(e));
-    let ext = an.build(&ctx).expect("SubjectAlternativeName::build");
+    let mut sans = SubjectAlternativeName::new();
+    for domain in domains {
+        sans.dns(domain);
+    }
+    let ext = sans.build(&ctx).expect("SubjectAlternativeName::build");
     stack.push(ext).expect("Stack::push");
     req_bld.add_extensions(&stack).expect("add_extensions");
 
