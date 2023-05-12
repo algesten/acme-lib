@@ -233,6 +233,7 @@ impl<P: Persist> CsrOrder<P> {
         // this is not the same as PEM.
         let csr_der = csr.to_der().expect("to_der()");
         let csr_enc = base64url(&csr_der);
+        log::info!("CSR base64 {}", csr_enc);
         let finalize = ApiFinalize { csr: csr_enc };
 
         let inner = self.order.inner;
