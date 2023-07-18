@@ -43,12 +43,12 @@ impl Transport {
     }
 
     /// Make call using the full jwk. Only for the first newAccount request.
-    pub fn call_jwk<T: Serialize + ?Sized>(&self, url: &str, body: &T) -> Result<reqwest::Response> {
+    pub fn call_jwk<T: Serialize + ?Sized>(&self, url: &str, body: &T) -> Result<reqwest::blocking::Response> {
         self.do_call(url, body, jws_with_jwk)
     }
 
     /// Make call using the key id
-    pub fn call<T: Serialize + ?Sized>(&self, url: &str, body: &T) -> Result<reqwest::Response> {
+    pub fn call<T: Serialize + ?Sized>(&self, url: &str, body: &T) -> Result<reqwest::blocking::Response> {
         self.do_call(url, body, jws_with_kid)
     }
 
@@ -57,7 +57,7 @@ impl Transport {
         url: &str,
         body: &T,
         make_body: F,
-    ) -> Result<reqwest::Response> {
+    ) -> Result<reqwest::blocking::Response> {
         // The ACME API may at any point invalidate all nonces. If we detect such an
         // error, we loop until the server accepts the nonce.
         loop {
@@ -108,19 +108,19 @@ pub(crate) struct NoncePool {
 
 #[derive(Debug)]
 pub(crate) struct ClientWrapper {
-    client: reqwest::Client
+    client: reqwest::blocking::Client
 }
 
 impl std::default::Default for ClientWrapper {
     fn default() -> Self {
         ClientWrapper{
-            client: reqwest::Client::new()
+            client: reqwest::blocking::Client::new()
         }
     }
 }
 
 impl NoncePool {
-    pub fn new(client: reqwest::Client, nonce_url: &str) -> Self {
+    pub fn new(client: reqwest::blocking::Client, nonce_url: &str) -> Self {
         NoncePool {
             client: ClientWrapper{ client },
             nonce_url: nonce_url.into(),
@@ -128,7 +128,7 @@ impl NoncePool {
         }
     }
 
-    fn extract_nonce(&self, res: &reqwest::Response) {
+    fn extract_nonce(&self, res: &reqwest::blocking::Response) {
         if let Ok(nonce) = req_expect_header(res,"replay-nonce") {
             trace!("Extract nonce");
             let mut pool = self.pool.lock().unwrap();

@@ -69,16 +69,16 @@ impl<P: Persist> Directory<P> {
     }
 
     pub fn from_url_with_config(persist: P, url: DirectoryUrl, client_config: &ClientConfig) -> Result<Directory<P>> {
-        let builder = reqwest::ClientBuilder::new();
+        let builder = reqwest::blocking::ClientBuilder::new();
         let client = match &client_config.https_proxy {
                                 Some(proxy) => reqwest::Proxy::https(proxy)
                                     .and_then(|p| builder.proxy(p).build()),
-                                None => Ok(reqwest::Client::new())
+                                None => Ok(reqwest::blocking::Client::new())
         }.or_else(|_| Err("failed to setup proxy for client"))?;
 
         let dir_url = url.to_url();
-        let mut res = req_handle_error(req_get(&client,&dir_url))?;
-        let api_directory: ApiDirectory = read_json(&mut res)?;
+        let res = req_handle_error(req_get(&client,&dir_url))?;
+        let api_directory: ApiDirectory = read_json(res)?;
         let nonce_pool = Arc::new(NoncePool::new(client, &api_directory.newNonce));
         Ok(Directory {
             persist,
@@ -154,10 +154,10 @@ impl<P: Persist> Directory<P> {
         };
 
         let mut transport = Transport::new(&self.nonce_pool, acme_key);
-        let mut res = transport.call_jwk(&self.api_directory.newAccount, &acc)?;
+        let res = transport.call_jwk(&self.api_directory.newAccount, &acc)?;
         let kid = req_expect_header(&res, "location")?;
         debug!("Key id is: {}", kid);
-        let api_account: ApiAccount = read_json(&mut res)?;
+        let api_account: ApiAccount = read_json(res)?;
 
         // fill in the server returned key id
         transport.set_key_id(kid);

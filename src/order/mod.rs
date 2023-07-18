@@ -59,11 +59,11 @@ pub(crate) fn refresh_order<P: Persist>(
     primary_name: String,
     want_status: &'static str,
 ) -> Result<Order<P>> {
-    let mut res = inner.transport.call(&url, &ApiEmptyString)?;
+    let res = inner.transport.call(&url, &ApiEmptyString)?;
 
     // our test rig requires the order to be in `want_status`.
     // api_order_of is different for test compilation
-    let api_order = api_order_of(&mut res, want_status)?;
+    let api_order = api_order_of(res, want_status)?;
 
     Ok(Order {
         inner: inner.clone(),
@@ -74,7 +74,7 @@ pub(crate) fn refresh_order<P: Persist>(
 }
 
 #[cfg(not(test))]
-fn api_order_of(res: &mut reqwest::Response, _want_status: &str) -> Result<ApiOrder> {
+fn api_order_of(res: reqwest::blocking::Response, _want_status: &str) -> Result<ApiOrder> {
     read_json(res)
 }
 
@@ -162,8 +162,8 @@ impl<P: Persist> NewOrder<P> {
         let mut result = vec![];
         if let Some(authorizations) = &self.order.api_order.authorizations {
             for auth_url in authorizations {
-                let mut res = self.order.inner.transport.call(auth_url, &ApiEmptyString)?;
-                let api_auth: ApiAuth = read_json(&mut res)?;
+                let res = self.order.inner.transport.call(auth_url, &ApiEmptyString)?;
+                let api_auth: ApiAuth = read_json(res)?;
                 result.push(Auth::new(&self.order.inner, api_auth, auth_url));
             }
         }
@@ -304,7 +304,7 @@ impl<P: Persist> CertOrder<P> {
         let inner = self.order.inner;
         let realm = &inner.realm[..];
 
-        let mut res = inner.transport.call(&url, &ApiEmptyString)?;
+        let res = inner.transport.call(&url, &ApiEmptyString)?;
 
         // save key and cert into persistence
         let persist = &inner.persist;

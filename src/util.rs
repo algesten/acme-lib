@@ -13,7 +13,7 @@ pub(crate) fn base64url<T: ?Sized + AsRef<[u8]>>(input: &T) -> String {
     base64::encode_config(input, *BASE64_CONFIG)
 }
 
-pub(crate) fn read_json<T: DeserializeOwned>(res: &mut reqwest::Response) -> Result<T> {
+pub(crate) fn read_json<T: DeserializeOwned>(res: reqwest::blocking::Response) -> Result<T> {
     let res_body = req_safe_read_body(res);
     debug!("{}", res_body);
     Ok(serde_json::from_str(&res_body)?)

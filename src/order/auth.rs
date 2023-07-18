@@ -229,8 +229,8 @@ impl<P: Persist, A> Challenge<P, A> {
     /// on the type challenge being validated.
     pub fn validate(self, delay_millis: u64) -> Result<()> {
         let url_chall = &self.api_challenge.url;
-        let mut res = self.inner.transport.call(url_chall, &ApiEmptyObject)?;
-        let _: ApiChallenge = read_json(&mut res)?;
+        let res = self.inner.transport.call(url_chall, &ApiEmptyObject)?;
+        let _: ApiChallenge = read_json(res)?;
 
         let auth = wait_for_auth_status(&self.inner, &self.auth_url, delay_millis)?;
 
@@ -279,8 +279,8 @@ fn wait_for_auth_status<P: Persist>(
     delay_millis: u64,
 ) -> Result<ApiAuth> {
     let auth = loop {
-        let mut res = inner.transport.call(auth_url, &ApiEmptyString)?;
-        let auth: ApiAuth = read_json(&mut res)?;
+        let res = inner.transport.call(auth_url, &ApiEmptyString)?;
+        let auth: ApiAuth = read_json(res)?;
         if !auth.is_status_pending() {
             break auth;
         }

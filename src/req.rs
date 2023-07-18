@@ -4,19 +4,19 @@ extern crate reqwest;
 
 pub(crate) type ReqResult<T> = std::result::Result<T, ApiProblem>;
 
-pub(crate) fn req_get(client: &reqwest::Client, url: &str) -> reqwest::Result<reqwest::Response> {
+pub(crate) fn req_get(client: &reqwest::blocking::Client, url: &str) -> reqwest::Result<reqwest::blocking::Response> {
     let resp = client.get(url).send();
     trace!("{:#?}", resp);
     resp
 }
 
-pub(crate) fn req_head(client: &reqwest::Client, url: &str) -> reqwest::Result<reqwest::Response> {
+pub(crate) fn req_head(client: &reqwest::blocking::Client, url: &str) -> reqwest::Result<reqwest::blocking::Response> {
     let resp= client.head(url).send();
     trace!("{:?}", resp);
     resp
 }
 
-pub(crate) fn req_post(client: &reqwest::Client, url: &str, body: &str) -> reqwest::Result<reqwest::Response> {
+pub(crate) fn req_post(client: &reqwest::blocking::Client, url: &str, body: &str) -> reqwest::Result<reqwest::blocking::Response> {
     let req= client.post(url)
         .header("content-type", "application/jose+json")
         .body(body.to_string());
@@ -33,15 +33,15 @@ fn req_configure(req: &mut ureq::Request) {
 }
 */
 
-pub(crate) fn req_handle_error(rt: reqwest::Result<reqwest::Response>) -> ReqResult<reqwest::Response> {
+pub(crate) fn req_handle_error(rt: reqwest::Result<reqwest::blocking::Response>) -> ReqResult<reqwest::blocking::Response> {
     match rt {
-        Ok(mut res) => match res.error_for_status_ref() {
+        Ok(res) => match res.error_for_status_ref() {
             // ok responses pass through
             Ok(_) => Ok(res),
             Err(_err) => {
                 let problem = if res.headers()[reqwest::header::CONTENT_TYPE] == "application/problem+json" {
                     // if we were sent a problem+json, deserialize it
-                    let body = req_safe_read_body(&mut res);
+                    let body = req_safe_read_body(res);
                     serde_json::from_str(&body).unwrap_or_else(|e| ApiProblem {
                         _type: "problemJsonFail".into(),
                         detail: Some(format!(
@@ -55,7 +55,7 @@ pub(crate) fn req_handle_error(rt: reqwest::Result<reqwest::Response>) -> ReqRes
                     let status_code = res.status();
                     let status_reason = status_code.canonical_reason().unwrap_or("Unknown status code");
                     let status = format!("{} {}", status_code, status_reason);
-                    let body = req_safe_read_body(&mut res);
+                    let body = req_safe_read_body(res);
                     let detail = format!("{} body: {}", status, body);
                     ApiProblem {
                         _type: "httpReqError".into(),
@@ -75,7 +75,7 @@ pub(crate) fn req_handle_error(rt: reqwest::Result<reqwest::Response>) -> ReqRes
     }
 }
 
-pub(crate) fn req_expect_header(res: &reqwest::Response, name: &str) -> ReqResult<String> {
+pub(crate) fn req_expect_header(res: &reqwest::blocking::Response, name: &str) -> ReqResult<String> {
     match res.headers().get(name) {
         Some(header) => match header.to_str() {
             Ok(s) => Ok(s.to_string()),
@@ -93,7 +93,7 @@ pub(crate) fn req_expect_header(res: &reqwest::Response, name: &str) -> ReqResul
     }
 }
 
-pub(crate) fn req_safe_read_body(res: &mut reqwest::Response) -> String {
+pub(crate) fn req_safe_read_body(res: reqwest::blocking::Response) -> String {
     match res.text() {
         Ok(s) => s.to_string(),
         Err(_) => String::new()
