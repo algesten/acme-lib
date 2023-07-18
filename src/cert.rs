@@ -49,7 +49,7 @@ pub(crate) fn create_csr(pkey: &PKey<pkey::Private>, primary_name: &str, domains
     let mut req_bld = X509ReqBuilder::new().expect("X509ReqBuilder");
 
     // set private/public key in builder
-    req_bld.set_pubkey(&pkey).expect("set_pubkey");
+    req_bld.set_pubkey(pkey).expect("set_pubkey");
 
     // set CN
     let mut name_builder = X509NameBuilder::new().expect("X509NameBuilder");
@@ -59,11 +59,12 @@ pub(crate) fn create_csr(pkey: &PKey<pkey::Private>, primary_name: &str, domains
     // set all domains as alt names
     let mut stack = Stack::new().expect("Stack::new");
     let ctx = req_bld.x509v3_context(None);
-    let mut sans = SubjectAlternativeName::new();
-    for domain in domains {
-        sans.dns(domain);
+    let mut an = SubjectAlternativeName::new();
+    for d in domains {
+        an.dns(d);
     }
-    let ext = sans.build(&ctx).expect("SubjectAlternativeName::build");
+
+    let ext = an.build(&ctx).expect("SubjectAlternativeName::build");
     stack.push(ext).expect("Stack::push");
     req_bld.add_extensions(&stack).expect("add_extensions");
 

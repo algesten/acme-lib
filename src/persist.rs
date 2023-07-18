@@ -6,7 +6,9 @@
 use std::collections::hash_map::{DefaultHasher, HashMap};
 use std::fs;
 use std::hash::{Hash, Hasher};
-use std::io::Read;
+use std::io::{Read, Write};
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -135,13 +137,30 @@ impl FilePersist {
 }
 
 impl Persist for FilePersist {
+    #[cfg(not(unix))]
     fn put(&self, key: &PersistKey, value: &[u8]) -> Result<()> {
         let f_name = file_name_of(&self.dir, &key);
         fs::write(f_name, value).map_err(Error::from)
     }
 
+    #[cfg(unix)]
+    fn put(&self, key: &PersistKey, value: &[u8]) -> Result<()> {
+        let f_name = file_name_of(&self.dir, key);
+        match key.kind {
+            PersistKind::AccountPrivateKey | PersistKind::PrivateKey => fs::OpenOptions::new()
+                .mode(0o600)
+                .write(true)
+                .truncate(true)
+                .create(true)
+                .open(f_name)?
+                .write_all(value)
+                .map_err(Error::from),
+            PersistKind::Certificate => fs::write(f_name, value).map_err(Error::from),
+        }
+    }
+
     fn get(&self, key: &PersistKey) -> Result<Option<Vec<u8>>> {
-        let f_name = file_name_of(&self.dir, &key);
+        let f_name = file_name_of(&self.dir, key);
         let ret = if let Ok(mut file) = fs::File::open(f_name) {
             let mut v = vec![];
             file.read_to_end(&mut v)?;
@@ -153,7 +172,7 @@ impl Persist for FilePersist {
     }
 }
 
-fn file_name_of(dir: &PathBuf, key: &PersistKey) -> PathBuf {
+fn file_name_of(dir: &Path, key: &PersistKey) -> PathBuf {
     let mut f_name = dir.join(key.to_string());
     f_name.set_extension(key.kind.name());
     f_name
