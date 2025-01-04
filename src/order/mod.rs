@@ -21,6 +21,7 @@ use openssl::pkey::{self, PKey};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+use ureq::{http, Body};
 
 use crate::acc::AccountInner;
 use crate::api::{ApiAuth, ApiEmptyString, ApiFinalize, ApiOrder};
@@ -70,14 +71,14 @@ pub(crate) fn refresh_order<P: Persist>(
 }
 
 #[cfg(not(test))]
-fn api_order_of(res: ureq::Response, _want_status: &str) -> Result<ApiOrder> {
+fn api_order_of(res: http::Response<Body>, _want_status: &str) -> Result<ApiOrder> {
     read_json(res)
 }
 
 #[cfg(test)]
 // our test rig requires the order to be in `want_status`
-fn api_order_of(res: ureq::Response, want_status: &str) -> Result<ApiOrder> {
-    let s = res.into_string()?;
+fn api_order_of(mut res: http::Response<Body>, want_status: &str) -> Result<ApiOrder> {
+    let s = res.body_mut().read_to_string().map_err(|e| e.into_io())?;
     #[allow(clippy::trivial_regex)]
     let re = regex::Regex::new("<STATUS>").unwrap();
     let b = re.replace_all(&s, want_status).to_string();
@@ -295,7 +296,7 @@ impl<P: Persist> CertOrder<P> {
         let inner = self.order.inner;
         let realm = &inner.realm[..];
 
-        let res = inner.transport.call(&url, &ApiEmptyString)?;
+        let mut res = inner.transport.call(&url, &ApiEmptyString)?;
 
         // save key and cert into persistence
         let persist = &inner.persist;
@@ -305,7 +306,7 @@ impl<P: Persist> CertOrder<P> {
         debug!("Save private key: {}", pk_key);
         persist.put(&pk_key, &pkey_pem_bytes)?;
 
-        let cert = res.into_string()?;
+        let cert = res.body_mut().read_to_string().map_err(|e| e.into_io())?;
         let pk_crt = PersistKey::new(realm, PersistKind::Certificate, &primary_name);
         debug!("Save certificate: {}", pk_crt);
         persist.put(&pk_crt, cert.as_bytes())?;

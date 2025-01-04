@@ -126,19 +126,23 @@ impl Certificate {
         let x509 = X509::from_pem(self.certificate.as_bytes()).expect("from_pem");
 
         // convert asn1 time to Tm
-        let not_after = format!("{}", x509.not_after());
+        let not_after = x509.not_after().to_string();
         // Display trait produces this format, which is kinda dumb.
         // Apr 19 08:48:46 2019 GMT
         let expires = parse_date(&not_after);
-        let dur = expires - time::now();
+        let dur = expires - jiff::Timestamp::now();
 
-        dur.num_days()
+        dur.get_days() as i64
     }
 }
 
-fn parse_date(s: &str) -> time::Tm {
-    debug!("Parse date/time: {}", s);
-    time::strptime(s, "%h %e %H:%M:%S %Y %Z").expect("strptime")
+fn parse_date(s: &str) -> jiff::Timestamp {
+    let s = s.replace(" GMT", " +0000");
+    println!("Parse date/time: {}", s);
+    jiff::fmt::strtime::parse("%h %e %H:%M:%S %Y %z", s)
+        .expect("strtime")
+        .to_timestamp()
+        .expect("timestamp")
 }
 
 #[cfg(test)]
@@ -148,6 +152,6 @@ mod test {
     #[test]
     fn test_parse_date() {
         let x = parse_date("May  3 07:40:15 2019 GMT");
-        assert_eq!(time::strftime("%F %T", &x).unwrap(), "2019-05-03 07:40:15");
+        assert_eq!(x.to_string(), "2019-05-03T07:40:15Z");
     }
 }
