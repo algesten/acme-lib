@@ -5,6 +5,9 @@ services such as [Let's Encrypt](https://letsencrypt.org/).
 
 Uses ACME v2 to issue/renew certificates.
 
+**Note:** This repo could use help with maintenance. The code is old, and somewhat embarrasing.
+It would be simple enough to rearchitecture this from the ground up into something better.
+
 ## Example
 
 ```rust
