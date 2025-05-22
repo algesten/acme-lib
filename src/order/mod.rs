@@ -170,6 +170,12 @@ impl<P: Persist> NewOrder<P> {
     pub fn api_order(&self) -> &ApiOrder {
         &self.order.api_order
     }
+    
+    
+    /// Access the order url 
+    pub fn order_url(&self) -> String {
+        self.order.url.clone()
+    }
 }
 
 /// An order that is ready for a [CSR] submission.
