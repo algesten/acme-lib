@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::acc::AcmeKey;
-use crate::cert::EC_GROUP_P256;
+use crate::cert::ec_group_p256;
 use crate::util::base64url;
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -63,7 +63,7 @@ impl From<&AcmeKey> for Jwk {
         let mut y = openssl::bn::BigNum::new().expect("BigNum");
         a.private_key()
             .public_key()
-            .affine_coordinates_gfp(&*EC_GROUP_P256, &mut x, &mut y, &mut ctx)
+            .affine_coordinates_gfp(ec_group_p256(), &mut x, &mut y, &mut ctx)
             .expect("affine_coordinates_gfp");
         Jwk {
             alg: "ES256".into(),

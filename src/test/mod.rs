@@ -1,27 +1,32 @@
 #![allow(clippy::trivial_regex)]
 
-use futures::Future;
-use hyper::{service::service_fn_ok, Body, Method, Request, Response, Server};
-use lazy_static::lazy_static;
 use std::net::TcpListener;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 
-lazy_static! {
-    static ref RE_URL: regex::Regex = regex::Regex::new("<URL>").unwrap();
+static RE_URL: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+
+fn re_url() -> &'static regex::Regex {
+    RE_URL.get_or_init(|| regex::Regex::new("<URL>").unwrap())
 }
 
 pub struct TestServer {
     pub dir_url: String,
-    shutdown: Option<futures::sync::oneshot::Sender<()>>,
+    shutdown: Arc<AtomicBool>,
+    thread_handle: Option<thread::JoinHandle<()>>,
 }
 
 impl Drop for TestServer {
     fn drop(&mut self) {
-        self.shutdown.take().unwrap().send(()).ok();
+        self.shutdown.store(true, Ordering::SeqCst);
+        if let Some(handle) = self.thread_handle.take() {
+            handle.join().ok();
+        }
     }
 }
 
-fn get_directory(url: &str) -> Response<Body> {
+fn get_directory(url: &str) -> String {
     const BODY: &str = r#"{
     "keyChange": "<URL>/acme/key-change",
     "newAccount": "<URL>/acme/new-acct",
@@ -34,21 +39,18 @@ fn get_directory(url: &str) -> Response<Body> {
         ]
     }
     }"#;
-    Response::new(Body::from(RE_URL.replace_all(BODY, url)))
+    re_url().replace_all(BODY, url).to_string()
 }
 
-fn head_new_nonce() -> Response<Body> {
-    Response::builder()
-        .status(204)
-        .header(
-            "Replay-Nonce",
-            "8_uBBV3N2DBRJczhoiB46ugJKUkUHxGzVe6xIMpjHFM",
-        )
-        .body(Body::empty())
-        .unwrap()
+fn head_new_nonce() -> (u16, Vec<(&'static str, &'static str)>, String) {
+    (
+        204,
+        vec![("Replay-Nonce", "8_uBBV3N2DBRJczhoiB46ugJKUkUHxGzVe6xIMpjHFM")],
+        String::new(),
+    )
 }
 
-fn post_new_acct(url: &str) -> Response<Body> {
+fn post_new_acct(url: &str) -> (u16, Vec<(String, String)>, String) {
     const BODY: &str = r#"{
     "id": 7728515,
     "key": {
@@ -66,15 +68,17 @@ fn post_new_acct(url: &str) -> Response<Body> {
     "createdAt": "2018-12-31T17:15:40.399104457Z",
     "status": "valid"
     }"#;
-    let location: String = RE_URL.replace_all("<URL>/acme/acct/7728515", url).into();
-    Response::builder()
-        .status(201)
-        .header("Location", location)
-        .body(Body::from(BODY))
-        .unwrap()
+    let location = re_url()
+        .replace_all("<URL>/acme/acct/7728515", url)
+        .to_string();
+    (
+        201,
+        vec![("Location".to_string(), location)],
+        BODY.to_string(),
+    )
 }
 
-fn post_new_order(url: &str) -> Response<Body> {
+fn post_new_order(url: &str) -> (u16, Vec<(String, String)>, String) {
     const BODY: &str = r#"{
     "status": "pending",
     "expires": "2019-01-09T08:26:43.570360537Z",
@@ -89,17 +93,14 @@ fn post_new_order(url: &str) -> Response<Body> {
     ],
     "finalize": "<URL>/acme/finalize/7738992/18234324"
     }"#;
-    let location: String = RE_URL
+    let location = re_url()
         .replace_all("<URL>/acme/order/YTqpYUthlVfwBncUufE8", url)
-        .into();
-    Response::builder()
-        .status(201)
-        .header("Location", location)
-        .body(Body::from(RE_URL.replace_all(BODY, url)))
-        .unwrap()
+        .to_string();
+    let body = re_url().replace_all(BODY, url).to_string();
+    (201, vec![("Location".to_string(), location)], body)
 }
 
-fn post_get_order(url: &str) -> Response<Body> {
+fn post_get_order(url: &str) -> (u16, Vec<(String, String)>, String) {
     const BODY: &str = r#"{
     "status": "<STATUS>",
     "expires": "2019-01-09T08:26:43.570360537Z",
@@ -115,11 +116,11 @@ fn post_get_order(url: &str) -> Response<Body> {
     "finalize": "<URL>/acme/finalize/7738992/18234324",
     "certificate": "<URL>/acme/cert/fae41c070f967713109028"
     }"#;
-    let b = RE_URL.replace_all(BODY, url).to_string();
-    Response::builder().status(200).body(Body::from(b)).unwrap()
+    let body = re_url().replace_all(BODY, url).to_string();
+    (200, vec![], body)
 }
 
-fn post_authz(url: &str) -> Response<Body> {
+fn post_authz(url: &str) -> (u16, Vec<(String, String)>, String) {
     const BODY: &str = r#"{
         "identifier": {
             "type": "dns",
@@ -148,34 +149,40 @@ fn post_authz(url: &str) -> Response<Body> {
         }
         ]
     }"#;
-    Response::builder()
-        .status(201)
-        .body(Body::from(RE_URL.replace_all(BODY, url)))
-        .unwrap()
+    let body = re_url().replace_all(BODY, url).to_string();
+    (201, vec![], body)
 }
 
-fn post_finalize(_url: &str) -> Response<Body> {
-    Response::builder().status(200).body(Body::empty()).unwrap()
+fn post_finalize(_url: &str) -> (u16, Vec<(String, String)>, String) {
+    (200, vec![], String::new())
 }
 
-fn post_certificate(_url: &str) -> Response<Body> {
-    Response::builder()
-        .status(200)
-        .body("CERT HERE".into())
-        .unwrap()
+fn post_certificate(_url: &str) -> (u16, Vec<(String, String)>, String) {
+    (200, vec![], "CERT HERE".to_string())
 }
 
-fn route_request(req: Request<Body>, url: &str) -> Response<Body> {
-    match (req.method(), req.uri().path()) {
-        (&Method::GET, "/directory") => get_directory(url),
-        (&Method::HEAD, "/acme/new-nonce") => head_new_nonce(),
-        (&Method::POST, "/acme/new-acct") => post_new_acct(url),
-        (&Method::POST, "/acme/new-order") => post_new_order(url),
-        (&Method::POST, "/acme/order/YTqpYUthlVfwBncUufE8") => post_get_order(url),
-        (&Method::POST, "/acme/authz/YTqpYUthlVfwBncUufE8IRWLMSRqcSs") => post_authz(url),
-        (&Method::POST, "/acme/finalize/7738992/18234324") => post_finalize(url),
-        (&Method::POST, "/acme/cert/fae41c070f967713109028") => post_certificate(url),
-        (_, _) => Response::builder().status(404).body(Body::empty()).unwrap(),
+fn route_request(
+    method: &str,
+    path: &str,
+    url: &str,
+) -> (u16, Vec<(String, String)>, String) {
+    match (method, path) {
+        ("GET", "/directory") => (200, vec![], get_directory(url)),
+        ("HEAD", "/acme/new-nonce") => {
+            let (status, headers, body) = head_new_nonce();
+            (
+                status,
+                headers.into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+                body,
+            )
+        }
+        ("POST", "/acme/new-acct") => post_new_acct(url),
+        ("POST", "/acme/new-order") => post_new_order(url),
+        ("POST", "/acme/order/YTqpYUthlVfwBncUufE8") => post_get_order(url),
+        ("POST", "/acme/authz/YTqpYUthlVfwBncUufE8IRWLMSRqcSs") => post_authz(url),
+        ("POST", "/acme/finalize/7738992/18234324") => post_finalize(url),
+        ("POST", "/acme/cert/fae41c070f967713109028") => post_certificate(url),
+        _ => (404, vec![], String::new()),
     }
 }
 
@@ -186,25 +193,40 @@ pub fn with_directory_server() -> TestServer {
     let url = format!("http://127.0.0.1:{}", port);
     let dir_url = format!("{}/directory", url);
 
-    let make_service = move || {
-        let url2 = url.clone();
-        service_fn_ok(move |req| route_request(req, &url2))
-    };
-    let server = Server::from_tcp(tcp).unwrap().serve(make_service);
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let shutdown_clone = shutdown.clone();
 
-    let (tx, rx) = futures::sync::oneshot::channel::<()>();
+    let handle = thread::spawn(move || {
+        let server = tiny_http::Server::from_listener(tcp, None).unwrap();
 
-    let graceful = server
-        .with_graceful_shutdown(rx)
-        .map_err(|err| eprintln!("server error: {}", err));
+        while !shutdown_clone.load(Ordering::SeqCst) {
+            let request = match server.recv_timeout(std::time::Duration::from_millis(100)) {
+                Ok(Some(req)) => req,
+                Ok(None) => continue,
+                Err(_) => break,
+            };
 
-    thread::spawn(move || {
-        hyper::rt::run(graceful);
+            let method = request.method().as_str();
+            let path = request.url();
+            let (status, headers, body) = route_request(method, path, &url);
+
+            let mut response = tiny_http::Response::from_string(body).with_status_code(status);
+
+            for (key, value) in headers {
+                if let Ok(header) = tiny_http::Header::from_bytes(key.as_bytes(), value.as_bytes())
+                {
+                    response.add_header(header);
+                }
+            }
+
+            let _ = request.respond(response);
+        }
     });
 
     TestServer {
         dir_url,
-        shutdown: Some(tx),
+        shutdown,
+        thread_handle: Some(handle),
     }
 }
 
