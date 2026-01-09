@@ -140,6 +140,18 @@ impl<P: Persist> Account<P> {
         Ok(NewOrder { order })
     }
 
+
+    /// Load an existing order from its URL.
+    ///
+    /// This can be used to resume processing of an order that was
+    /// created earlier.
+    pub fn load_order(&self, order_url: &str) -> Result<NewOrder<P>> {
+        let res = self.inner.transport.call(order_url, "")?;
+        let api_order: ApiOrder = read_json(res)?;
+        let order = Order::new(&self.inner, api_order, order_url.to_string());
+        Ok(NewOrder { order })
+    }
+    
     /// Revoke a certificate for the reason given.
     ///
     /// This calls the ACME API revoke endpoint, but does not affect the locally persisted
