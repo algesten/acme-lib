@@ -8,7 +8,7 @@ use ureq::{http, Body};
 use crate::acc::AcmeKey;
 use crate::jwt::*;
 use crate::req::{req_expect_header, req_handle_error, req_head, req_post};
-use crate::util::base64url;
+use crate::util::{base64url, p256_component_bytes};
 use crate::Result;
 
 /// JWS payload and nonce handling for requests to the API.
@@ -207,15 +207,46 @@ fn jws_with<T: Serialize + ?Sized>(
     let to_sign = format!("{}.{}", protected, payload);
     let digest = sha256(to_sign.as_bytes());
     let sig = EcdsaSig::sign(&digest, key.private_key()).expect("EcdsaSig::sign");
-    let r = sig.r().to_vec();
-    let s = sig.s().to_vec();
-
-    let mut v = Vec::with_capacity(r.len() + s.len());
-    v.extend_from_slice(&r);
-    v.extend_from_slice(&s);
-    let signature = base64url(&v);
+    let signature = base64url(&es256_signature_bytes(&sig));
 
     let jws = Jws::new(protected, payload, signature);
 
     Ok(serde_json::to_string(&jws)?)
+}
+
+fn es256_signature_bytes(signature: &EcdsaSig) -> Vec<u8> {
+    let r = p256_component_bytes(signature.r());
+    let s = p256_component_bytes(signature.s());
+    [r.as_slice(), s.as_slice()].concat()
+}
+
+#[cfg(test)]
+mod tests {
+    use openssl::{bn::BigNum, ecdsa::EcdsaSig};
+
+    use super::es256_signature_bytes;
+    use crate::util::P256_COMPONENT_LENGTH;
+
+    #[test]
+    fn es256_signature_components_are_fixed_width() {
+        let signature = EcdsaSig::from_private_components(
+            BigNum::from_u32(1).expect("valid r component"),
+            BigNum::from_u32(2).expect("valid s component"),
+        )
+        .expect("valid ECDSA signature components");
+
+        let encoded = es256_signature_bytes(&signature);
+
+        assert_eq!(encoded.len(), P256_COMPONENT_LENGTH * 2);
+        assert!(encoded[..P256_COMPONENT_LENGTH - 1]
+            .iter()
+            .all(|byte| *byte == 0));
+        assert_eq!(encoded[P256_COMPONENT_LENGTH - 1], 1);
+        assert!(
+            encoded[P256_COMPONENT_LENGTH..P256_COMPONENT_LENGTH * 2 - 1]
+                .iter()
+                .all(|byte| *byte == 0)
+        );
+        assert_eq!(encoded[P256_COMPONENT_LENGTH * 2 - 1], 2);
+    }
 }
