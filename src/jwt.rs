@@ -1,8 +1,9 @@
+use openssl::bn::BigNumRef;
 use serde::{Deserialize, Serialize};
 
 use crate::acc::AcmeKey;
 use crate::cert::ec_group_p256;
-use crate::util::base64url;
+use crate::util::{base64url, p256_component_bytes};
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub(crate) struct JwsProtected {
@@ -70,10 +71,14 @@ impl From<&AcmeKey> for Jwk {
             kty: "EC".into(),
             crv: "P-256".into(),
             _use: "sig".into(),
-            x: base64url(&x.to_vec()),
-            y: base64url(&y.to_vec()),
+            x: jwk_coordinate(&x),
+            y: jwk_coordinate(&y),
         }
     }
+}
+
+fn jwk_coordinate(coordinate: &BigNumRef) -> String {
+    base64url(&p256_component_bytes(coordinate))
 }
 
 impl From<&Jwk> for JwkThumb {
@@ -101,5 +106,39 @@ impl Jws {
             payload,
             signature,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use base64::Engine;
+
+    use super::Jwk;
+    use crate::acc::AcmeKey;
+
+    const P256_COMPONENT_LENGTH: usize = 32;
+
+    const KEY_WITH_LEADING_ZERO_X: &[u8] = br#"-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEIGGj9y1IuJmCHR76uYxA/mM/AciUFVCG/jIrJ27mo77boAoGCCqGSM49
+AwEHoUQDQgAEAIremSXMAtjvYHe2x7IEhpoXkg0BjRWB8oSvwf82inCZ+x1M0eWy
+VuDmmZJmR2Tekx6gwHOsnkGxWmOVSsi3hw==
+-----END EC PRIVATE KEY-----
+"#;
+
+    #[test]
+    fn jwk_coordinates_are_fixed_width() {
+        let key = AcmeKey::from_pem(KEY_WITH_LEADING_ZERO_X).expect("valid P-256 key");
+        let jwk = Jwk::from(&key);
+
+        let x = base64::prelude::BASE64_URL_SAFE_NO_PAD
+            .decode(jwk.x)
+            .expect("valid base64url x coordinate");
+        let y = base64::prelude::BASE64_URL_SAFE_NO_PAD
+            .decode(jwk.y)
+            .expect("valid base64url y coordinate");
+
+        assert_eq!(x.len(), P256_COMPONENT_LENGTH);
+        assert_eq!(x[0], 0);
+        assert_eq!(y.len(), P256_COMPONENT_LENGTH);
     }
 }
